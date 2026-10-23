@@ -497,6 +497,7 @@ async function startStore(uid){
   base=db.doc('life/profile');
   catsRef=base.collection('categories');tasksRef=base.collection('tasks');plansRef=base.collection('plans');reqRef=base.collection('requests');
   setTimeout(weather,100);
+  if('serviceWorker' in navigator)checkPush();
   reqRef.orderBy('at','desc').limit(60).onSnapshot(s=>{S.requests=s.docs.map(d=>Object.assign({id:d.id},d.data()));refreshReqViews()},()=>{});
   base.onSnapshot(s=>{
     S.profile=s.exists?s.data():null;S.profileLoaded=true;
@@ -717,6 +718,37 @@ async function importData(file,btn){
   }catch(e){toast('Import impossible : fichier illisible.');if(btn){btn.disabled=false;btn.textContent='Importer'}}
 }
 
+/* ---------- Notifications (Web Push, envoyées par la fonction Supabase life-push) ---------- */
+const VAPID_PUBLIC='BKDQzWajzU-m9sGNnf1SZ-BCRpnYmD1X7Vq0xc2h2qlmYtiLsgaphi1MAlknUq7Hq0nG1KdfzXCmuZ0xcaS-4ZM';
+const standalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function pushStateText(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))return standalone()?'Cet appareil ne gère pas les notifications.':'Sur iPhone, installe d’abord Life sur l’écran d’accueil (Safari, Partager, Sur l’écran d’accueil), puis ouvre-la depuis l’icône.';
+  if(typeof Notification!=='undefined'&&Notification.permission==='denied')return 'Notifications refusées : autorise-les dans Réglages de l’iPhone, Notifications, Life.';
+  return S.pushOn?'✅ Activées sur cet appareil.':'Pas encore activées sur cet appareil.';
+}
+function b64uToBytes(s){const p='='.repeat((4-s.length%4)%4);const b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(b,c=>c.charCodeAt(0))}
+async function checkPush(){
+  try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();S.pushOn=!!sub;const el=$('#push-state');if(el)el.textContent=pushStateText()}catch(e){}
+}
+async function enablePush(btn){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){toast(pushStateText());return}
+  btn.disabled=true;
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){toast('Notifications non autorisées.');return}
+    const reg=await navigator.serviceWorker.ready;
+    const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToBytes(VAPID_PUBLIC)});
+    const j=sub.toJSON();let h=0;for(const c of j.endpoint)h=(h*31+c.charCodeAt(0))>>>0;
+    await db.collection('life/push').doc('d'+h.toString(36)).set({sub:j,device:navigator.userAgent.slice(0,120),at:new Date().toISOString()});
+    S.pushOn=true;toast('Notifications activées.');
+  }catch(e){toast('Activation impossible : '+(e&&e.message||'erreur'))}
+  finally{btn.disabled=false;const el=$('#push-state');if(el)el.textContent=pushStateText()}
+}
+async function testPush(){
+  try{await db.collection('life/pushqueue').doc().set({title:'Life',body:'Les notifications marchent 🎉',at:new Date().toISOString()});toast('Envoyée : elle arrive dans la minute.')}
+  catch(e){toast('Pas envoyée. Réessaie.')}
+}
+
 /* ---------- Météo (Open-Meteo, gratuit) ---------- */
 const WX=c=>c===0?['☀️','Ensoleillé']:c<=2?['🌤️','Peu nuageux']:c===3?['☁️','Couvert']:c<=48?['🌫️','Brouillard']:c<=57?['🌦️','Bruine']:c<=67?['🌧️','Pluie']:c<=77?['❄️','Neige']:c<=82?['🌧️','Averses']:c<=86?['🌨️','Averses de neige']:['⛈️','Orage'];
 async function weather(){
@@ -748,7 +780,7 @@ function viewOnboarding(){
   '<div class="grid2"><label class="f">Début<input type="time" id="o-ws" value="09:00"></label><label class="f">Fin<input type="time" id="o-we" value="17:30"></label></div>'+
   '<div class="f">Jours travaillés<div class="days" id="o-days">'+DAYS.map(d=>'<button type="button" data-day="'+d[0]+'" aria-pressed="'+(d[0]>=1&&d[0]<=5)+'">'+d[1]+'</button>').join('')+'</div></div>'+
   '<div class="grid2"><label class="f">Transport, aller (minutes)<input type="number" id="o-commute" min="0" max="240" value="30"></label><label class="f">Ta ville<input type="text" id="o-city" placeholder="Ex. Lyon"></label></div>'+
-  '<label class="toggle"><input type="checkbox" id="o-ex" checked> Ajouter quelques tâches d’exemple (marquées « exemple », à supprimer quand tu veux)</label></div>'+
+  '<label class="toggle"><input type="checkbox" id="o-ex"> Ajouter quelques tâches d’exemple (marquées « exemple », à supprimer quand tu veux)</label></div>'+
   '<button class="btn" id="o-go" data-act="onboard">Créer mon planning</button></section>';
 }
 
@@ -881,7 +913,10 @@ function viewSettings(){
   '<div class="glass pad stack"><h2>Charge de la journée</h2><p class="small muted">Life ajuste toute seule selon ce que tu termines. Tu peux aussi l’orienter avec « Alléger » et « Ajoute-moi des tâches » sur la page Home.</p>'+
   '<p class="small">Réglage actuel : '+Math.round(loadFactor()*100)+' % de la charge normale.</p><div><button type="button" class="btn soft" data-act="resetload">Revenir à une charge normale</button></div></div>'+
   '<div class="glass pad stack"><h2>Affichage</h2><label class="toggle"><input type="checkbox" id="s-hidedone"'+(p.hideDone?' checked':'')+'> Masquer les tâches faites dans « Ma journée »</label></div>'+
-  '<div class="glass pad stack"><h2>Alertes</h2><p class="small muted">10 minutes avant chaque tâche à heure précise. Elles s’affichent seulement quand Life est ouverte ; le son marche après un premier clic dans la page. Les vraies notifications arriveront avec le futur hébergement.</p>'+
+  '<div class="glass pad stack"><h2>Alertes</h2><p class="small muted">10 minutes avant chaque tâche à heure précise.</p>'+
+  '<div class="stack" style="gap:6px"><b class="small">Notifications sur cet appareil</b><p class="small muted" id="push-state">'+pushStateText()+'</p>'+
+  '<div class="row"><button type="button" class="btn" data-act="pushon">Activer sur cet appareil</button><button type="button" class="btn soft" data-act="pushtest">Envoyer une notification test</button></div></div>'+
+  '<p class="small muted">Quand Life est ouverte, une alerte s’affiche aussi dans la page (avec son après un premier clic).</p>'+
   '<label class="toggle"><input type="checkbox" id="s-alerts"'+(p.alerts!==false?' checked':'')+'> Afficher les alertes</label>'+
   '<label class="toggle"><input type="checkbox" id="s-sound"'+(p.sound!==false?' checked':'')+'> Avec son</label>'+
   '<div><button type="button" class="btn soft" data-act="testalert">Tester une alerte</button></div></div>'+
@@ -1171,6 +1206,8 @@ document.addEventListener('click',async e=>{
     if(!a.dataset.confirm){a.dataset.confirm='1';a.textContent='Confirmer la suppression';return}
     try{await catsRef.doc(id).delete();closeSheet();S.catPage='list';render();toast('Catégorie supprimée.')}catch(err){toast('Pas supprimée. Réessaie.')}
   }
+  else if(act==='pushon')enablePush(a);
+  else if(act==='pushtest')testPush();
   else if(act==='authswitch'){S.auth=S.auth==='signup'?'signin':'signup';$('#app').innerHTML='';render()}
   else if(act==='logout'){await sb.auth.signOut();location.reload()}
   else if(act==='websearch'){a.disabled=true;try{await requestWeb($('#web-q').value,id);toast('Question transmise à Claude.')}catch(err){toast('Pas envoyée. Réessaie.')}a.disabled=false}
