@@ -1,6 +1,6 @@
 // Garde une copie des fichiers de l'appli pour l'ouvrir même avec une connexion faible.
 // Réseau d'abord, pour toujours avoir la dernière version quand internet est là.
-const CACHE = 'life-v1';
+const CACHE = 'life-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

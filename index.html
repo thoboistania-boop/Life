@@ -460,13 +460,24 @@ function makeStore(uid){
   async function load(){
     for(let from=0;;from+=1000){const {data,error}=await sb.from('docs').select('coll,id,data').range(from,from+999);if(error)throw error;data.forEach(r=>C(r.coll).set(r.id,r.data));if(data.length<1000)break}
   }
+  // Relit une collection (ou tout) depuis Supabase, au cas où le direct n'a pas transmis un changement.
+  async function refresh(coll){
+    let q=sb.from('docs').select('coll,id,data');if(coll)q=q.eq('coll',coll);
+    const {data,error}=await q.range(0,4999);if(error)return;
+    const fresh=new Map();data.forEach(r=>{if(!fresh.has(r.coll))fresh.set(r.coll,new Map());fresh.get(r.coll).set(r.id,r.data)});
+    const colls=coll?[coll]:[...new Set([...cache.keys(),...fresh.keys()])];
+    colls.forEach(c=>{const cur=C(c),nw=fresh.get(c)||new Map();let changed=false;
+      cur.forEach((v,id)=>{if(!nw.has(id)){cur.delete(id);changed=true}});
+      nw.forEach((v,id)=>{if(JSON.stringify(cur.get(id))!==JSON.stringify(v)){cur.set(id,v);changed=true}});
+      if(changed)emit(c)});
+  }
   function subscribe(){
     sb.channel('docs-'+uid).on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
       const r=p.eventType==='DELETE'?p.old:p.new;if(!r||!r.coll||(r.user_id&&r.user_id!==uid))return;
       setLocal(r.coll,r.id,p.eventType==='DELETE'?undefined:r.data);
     }).subscribe();
   }
-  return {load,subscribe,doc:p=>{const i=p.lastIndexOf('/');return docRef(p.slice(0,i),p.slice(i+1))},collection:collRef,writeRaw:write};
+  return {load,subscribe,refresh,doc:p=>{const i=p.lastIndexOf('/');return docRef(p.slice(0,i),p.slice(i+1))},collection:collRef,writeRaw:write};
 }
 async function boot(){
   render();
@@ -480,6 +491,9 @@ async function startStore(uid){
   db=makeStore(uid);
   try{await db.load()}catch(e){S.noDb=true;render();return}
   db.subscribe();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)db.refresh()});
+  window.addEventListener('focus',()=>db.refresh());
+  setInterval(()=>{if(!document.hidden&&S.requests.some(r=>r.status!=='done'))db.refresh('life/profile/requests')},15000);
   base=db.doc('life/profile');
   catsRef=base.collection('categories');tasksRef=base.collection('tasks');plansRef=base.collection('plans');reqRef=base.collection('requests');
   setTimeout(weather,100);
