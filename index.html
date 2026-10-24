@@ -85,6 +85,10 @@ button{cursor:pointer}
 .tl.marker .time{padding-top:3px}
 .marker-line{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.82rem;padding:2px 0}
 .marker-line::after{content:"";flex:1;height:1px;background:var(--line)}
+.tl.now .time,.tl.now .marker-line{color:var(--warn);font-weight:600}
+.tl.now .marker-line::after{height:2px;background:var(--warn)}
+.late-txt{color:var(--warn);font-weight:600}
+.tcard.late{box-shadow:inset 3px 0 0 var(--warn),var(--shadow)}
 .tcard{position:relative;display:flex;align-items:center;gap:10px;padding:9px 8px 9px 10px;cursor:pointer;min-width:0}
 .tcard .body{flex:1;min-width:0}
 .tcard .t{font-weight:600;overflow-wrap:anywhere}
@@ -349,9 +353,12 @@ const MOMENT_ICON={morning:'🌅',noon:'🍽️',afternoon:'☀️',evening:'�
 const autoLabel=title=>{const m=detectMoment(title);return m==='any'?'Life choisit le moment':MOMENTS[m].l+' (deviné par Life)'};
 // Petit repère à côté de la date ou de l'heure : quel moment, et qui l'a décidé.
 function momentBadge(t){const m=momentOf(t);if(m==='any'||t.time)return '';
-  return ' · '+MOMENT_ICON[m]+' '+esc(MOMENTS[m].l.toLowerCase())+' <span class="muted">('+(t.moment&&t.moment!=='auto'?'choisi par toi':'deviné par Life')+')</span>'}
+  return ' · '+MOMENT_ICON[m]+' '+esc(MOMENTS[m].l.toLowerCase())+' <span class="muted">('+(t.moment&&t.moment!=='auto'?'choisi par toi':'deviné par Life')+')</span>'+
+    (t.timeWas?' <span class="muted">· '+esc(t.timeWas)+' retiré, heure à préciser</span>':'')}
 const momentOf=t=>t.moment&&t.moment!=='auto'&&MOMENTS[t.moment]?t.moment:detectMoment(t.title);
 const winOf=t=>{const m=MOMENTS[momentOf(t)];return m&&m.from!=null?[m.from,m.to]:[0,1440]};
+// Heure précise qui contredit le moment (ex. « Soirée » à 12:20) et que Tania n'a pas confirmée : Life la retire.
+const timeClash=t=>{if(!t.time||t.timeOk)return false;const w=winOf(t),m=toMin(t.time);return m<w[0]||m>=w[1]};
 // Premier créneau libre qui tombe dans le bon moment de la journée.
 const fitSlot=(ivs,t)=>{const w=winOf(t);for(const iv of ivs){const s=Math.max(iv[0],w[0]),e=Math.min(iv[1],w[1]);if(e-s>=t.duration)return [s,e]}return null};
 // Un événement (soirée, concert, rendez-vous…) ne se reporte pas tout seul : s'il est passé, Life demande.
@@ -446,6 +453,32 @@ async function replanToday(silent,fill){
     return n;
   }catch(e){toast('Impossible de replanifier. Réessaie dans un instant.');return 0}
 }
+// Retire l'heure d'une tâche quand elle contredit le moment deviné ou choisi, puis replanifie.
+let fixingClash=false;
+async function fixClashes(){
+  if(fixingClash||!tasksRef)return;
+  const bad=S.tasks.filter(t=>!t.done&&!t.abandoned&&timeClash(t));if(!bad.length)return;
+  fixingClash=true;
+  try{
+    for(const t of bad)await tasksRef.doc(t.id).update({time:null,timeWas:t.time});
+    toast(bad.length===1?'« '+bad[0].title+' » à '+bad[0].time+' ne collait pas avec '+MOMENTS[momentOf(bad[0])].l.toLowerCase()+' : Life a retiré cette heure.':bad.length+' heures qui ne collaient pas avec le moment ont été retirées.');
+    setTimeout(()=>replanToday(true),400);
+  }catch(e){}finally{fixingClash=false}
+}
+// Retard en minutes d'un élément du planning du jour (0 s'il n'est pas en retard).
+const lateBy=(i,d)=>{const t=i.t||taskById(i.tid);if(!t||i.w||t.abandoned||isDone(t,d)||d!==today())return 0;const l=nowMin()-i.s;return l>5?l:0};
+// Chaque minute : une tâche sans heure fixe en retard de 15 min ou plus est décalée toute seule, et « Ma journée » se met à l'heure.
+let lastAutoReplan=0;
+function tick(){
+  if(document.hidden||!S.plan||S.plan.date!==today())return;
+  const d=today(),late=S.plan.items.filter(i=>{const t=taskById(i.tid);return t&&!t.time&&lateBy(i,d)>=15});
+  if(late.length&&Date.now()-lastAutoReplan>10*60000){
+    lastAutoReplan=Date.now();const t0=taskById(late[0].tid);
+    replanToday(true).then(()=>toast(late.length===1?'« '+t0.title+' » était en retard : Life l’a décalée.':late.length+' tâches en retard décalées par Life.'));return;
+  }
+  if(S.view==='home'&&$('#sheet').hidden&&!S.menu)render();
+}
+setInterval(tick,60000);
 
 /* ---------- Données ---------- */
 function subscribePlan(){
@@ -543,6 +576,7 @@ async function startStore(uid){
     S.tasks=s.docs.map(d=>norm(Object.assign({id:d.id},d.data())));
     const first=!S.tasksLoaded;S.tasksLoaded=true;
     if(first)await computeLoad();
+    fixClashes();
     maybeAutoPlan();render();
   },dbErr);
   subscribePlan();
@@ -717,14 +751,15 @@ function chime(){
 const alerted=new Set();
 function showAlert(t,mins){
   const el=$('#alert'),c=catOf(t);
-  el.innerHTML='<span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div style="flex:1;min-width:0"><b>Dans '+mins+' min</b><div class="small">'+esc(t.title)+' · '+esc(t.time)+'</div></div><button class="btn" data-act="alertok">OK</button>';
+  el.innerHTML='<span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div style="flex:1;min-width:0"><b>'+(mins>0?'Dans '+mins+' min':'C’est maintenant')+'</b><div class="small">'+esc(t.title)+' · '+esc(t.time)+'</div></div><button class="btn" data-act="alertok">OK</button>';
   el.hidden=false;if((S.profile||{}).sound!==false)chime();
 }
 function checkAlerts(){
   const p=S.profile;if(!p||p.alerts===false||!S.plan||S.plan.date!==today())return;
   const n=nowMin(),d=today();
-  S.plan.items.forEach(i=>{const t=taskById(i.tid);if(!t||!t.time||isDone(t,d))return;const k=d+'|'+t.id;
-    if(n>=i.s-10&&n<i.s&&!alerted.has(k)){alerted.add(k);showAlert(t,i.s-n)}});
+  S.plan.items.forEach(i=>{const t=taskById(i.tid);if(!t||!t.time||t.abandoned||isDone(t,d))return;const k=d+'|'+t.id;
+    if(n>=i.s-10&&n<i.s&&!alerted.has(k)){alerted.add(k);showAlert(t,i.s-n)}
+    else if(n>=i.s&&n<i.s+3&&!alerted.has(k+'@start')){alerted.add(k);alerted.add(k+'@start');showAlert(t,0)}});
 }
 setInterval(checkAlerts,30000);
 
@@ -817,11 +852,12 @@ function viewOnboarding(){
 
 function viewHome(){
   const d=today(),plan=S.plan||{items:[],skipped:[]},p=S.profile||{};
-  const all=plan.items.map(i=>Object.assign({},i,{t:taskById(i.tid)})).filter(i=>i.t);
+  const all=plan.items.map(i=>Object.assign({},i,{t:taskById(i.tid)})).filter(i=>i.t&&!i.t.abandoned);
   const done=all.filter(i=>isDone(i.t,d)).length,total=all.length,pct=total?Math.round(done/total*100):0;
   const items=p.hideDone?all.filter(i=>!isDone(i.t,d)):all;
-  const di=dayInfo(d);
+  const di=dayInfo(d),nm=nowMin();
   const entries=[{m:di.wake,html:marker(di.wake,'☀️ Réveil')}];
+  if(nm>=di.wake&&nm<=di.sleep)entries.push({m:nm-0.5,html:'<div class="tl marker now"><div class="time">'+toHM(nm)+'</div><div class="marker-line">● Maintenant</div></div>'});
   if(di.works){
     const wt=items.filter(i=>i.w);
     entries.push({m:di.ws,html:'<div class="tl marker"><div class="time">'+toHM(di.ws)+'</div><div class="work"><div class="line">💼 Travail jusqu’à '+toHM(di.we)+(di.c?' · trajet '+di.c+' min':'')+'</div>'+wt.map(i=>taskCard(i,d)).join('')+'</div></div>'});
@@ -836,7 +872,7 @@ function viewHome(){
   const banner=p.v!==2?'<div class="glass pad stack"><h3>Nouvelle version de Life</h3><p class="small">Les catégories ont changé (plus d’Études ni de santé). Tu peux repartir de zéro avec le nouveau choix de catégories, ou garder tes données actuelles.</p><div class="row"><button class="btn" data-act="reset">Repartir de zéro</button><button class="btn soft" data-act="keepv2">Garder mes données</button></div></div>':'';
   const fb=total&&done===total&&!S.fbHidden?'<div class="glass pad stack"><h3>Tout est fait 🎉</h3><p class="small">C’était assez pour aujourd’hui ?</p><div class="row"><button class="btn" data-act="more">Ajoute-moi des tâches</button><button class="btn soft" data-act="fbok">C’était parfait</button></div></div>':'';
   return '<div class="top"><div class="logo"><i></i>Life</div><button class="btn" data-act="new">+ Créer une tâche</button></div>'+
-    '<form id="home-ask" class="askbar glass"><input type="text" id="homeask" placeholder="Demande quelque chose à Life…" maxlength="1000" autocomplete="off" aria-label="Demande à Life"><button class="btn" type="submit" aria-label="Envoyer">→</button></form>'+banner+overdueCard()+
+    '<form id="home-ask" class="askbar glass"><input type="text" id="homeask" placeholder="Demande quelque chose à Life…" maxlength="1000" autocomplete="off" aria-label="Demande à Life"><button class="btn" type="submit" aria-label="Envoyer">→</button></form>'+banner+overdueCard()+lateCard(all,d)+
     '<div class="glass pad stack"><div class="spread"><b style="text-transform:capitalize">'+esc(fmtDay(d))+'</b><span class="small muted">'+done+' / '+total+' faites</span></div>'+
     (wxDay(d)?'<div class="wx">'+WX((S.weather.now||wxDay(d)).code)[0]+' '+(S.weather.now?S.weather.now.t+'° · ':'')+esc(WX(wxDay(d).code)[1])+' · '+wxDay(d).min+'° / '+wxDay(d).max+'°'+(wxDay(d).rain!=null?' · pluie '+wxDay(d).rain+' %':'')+'</div>':'')+'<div class="progress" role="progressbar" aria-valuenow="'+pct+'" aria-valuemin="0" aria-valuemax="100"><b style="width:'+pct+'%"></b></div>'+
     '<div class="spread small muted"><span>'+(S.rate!=null?(loadFactor()>1.02?'Tu gères : Life ajoute un peu.':loadFactor()<0.98?'Life allège ta charge.':'Charge équilibrée.'):'Life apprend ton rythme.')+'</span><span class="row"><button class="link" data-act="lighter">Trop chargée ? Alléger</button><button class="link" data-act="replan">Replanifier</button></span></div></div>'+fb+
@@ -856,14 +892,25 @@ function overdueCard(){
     '<div class="row">'+(ev?'<button class="btn soft" data-act="odone" data-id="'+esc(t.id)+'">Oui</button><button class="btn soft" data-act="oabandon" data-id="'+esc(t.id)+'">Non, retirer</button>':
       '<button class="btn soft" data-act="odone" data-id="'+esc(t.id)+'">Fait</button><button class="btn soft" data-act="otoday" data-id="'+esc(t.id)+'">Aujourd’hui</button><button class="btn soft" data-act="oabandon" data-id="'+esc(t.id)+'">Abandonner</button>')+'</div></div>'}).join('')+'</div>';
 }
+// Tâches à heure fixe dont l'heure est passée depuis 15 min : Life demande ce qu'on en fait.
+function lateCard(all,d){
+  const late=all.filter(i=>i.t.time&&!i.w&&lateBy(i,d)>=15);
+  if(!late.length)return '';
+  return '<div class="glass pad stack"><h3>Tu es en retard sur…</h3>'+late.map(i=>{const t=i.t,c=catOf(t);
+    return '<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:8px"><div class="row"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div style="flex:1;min-width:0"><b>'+esc(t.title)+'</b><div class="small late-txt">Prévue à '+esc(t.time)+', il y a '+fmtDur(lateBy(i,d))+'.</div></div></div>'+
+    '<div class="row"><button class="btn soft" data-act="toggle" data-id="'+esc(t.id)+'">C’est fait</button>'+
+    (t.type==='once'?'<button class="btn soft" data-act="lmove" data-id="'+esc(t.id)+'">Plus tard</button>':'')+
+    '<button class="btn soft" data-act="lskip" data-id="'+esc(t.id)+'">'+(t.type==='once'?'Retirer':'Pas aujourd’hui')+'</button></div></div>'}).join('')+'</div>';
+}
 function marker(m,label){return '<div class="tl marker"><div class="time">'+toHM(m)+'</div><div class="marker-line">'+label+'</div></div>'}
 function taskCard(i,d){
-  const t=i.t,c=catOf(t),done=isDone(t,d);
+  const t=i.t,c=catOf(t),done=isDone(t,d),late=lateBy(i,d),nm=nowMin();
   const extra=t.catIds.map(id=>S.cats.find(x=>x.id===id)).filter(Boolean).map(x=>esc(x.emoji)).join('');
-  return '<div class="glass tcard'+(done?' done':'')+'" data-act="open" data-id="'+esc(t.id)+'">'+
+  const state=late?'<span class="late-txt">· en retard de '+fmtDur(late)+'</span>':!done&&!i.w&&d===today()&&nm>=i.s&&nm<i.e?'<span class="late-txt">· c’est maintenant</span>':'';
+  return '<div class="glass tcard'+(done?' done':'')+(late?' late':'')+'" data-act="open" data-id="'+esc(t.id)+'">'+
     '<button class="check'+(done?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(t.id)+'" aria-label="'+(done?'Marquer comme pas faite':'Marquer comme faite')+'">'+(done?'✓':'')+'</button>'+
     '<span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span>'+
-    '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="meta"><span>'+esc(c.name)+(extra?' '+extra:'')+'</span><span>· '+fmtDur(t.duration)+'</span>'+(t.time?'<span>· heure fixe</span>':'')+(momentBadge(t)?'<span>'+momentBadge(t)+'</span>':'')+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div></div>'+
+    '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="meta"><span>'+esc(c.name)+(extra?' '+extra:'')+'</span><span>· '+fmtDur(t.duration)+'</span>'+(t.time?'<span>· heure fixe</span>':'')+(momentBadge(t)?'<span>'+momentBadge(t)+'</span>':'')+state+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div></div>'+
     '<button class="icon-btn" data-act="menu" data-id="'+esc(t.id)+'" aria-label="Plus d’actions" aria-expanded="'+(S.menu===t.id)+'">⋯</button>'+
     (S.menu===t.id?'<div class="menu" role="menu"><button role="menuitem" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button>'+(!done&&!t.time?'<button role="menuitem" data-act="replace" data-id="'+esc(t.id)+'">Remplacer par une tâche prévue plus tard</button>':'')+'</div>':'')+'</div>';
 }
@@ -1254,8 +1301,17 @@ document.addEventListener('click',async e=>{
   else if(act==='odone'||act==='otoday'||act==='oabandon'){
     const t=taskById(id);if(!t)return;a.disabled=true;
     const patch=act==='odone'?{done:true,doneAt:new Date().toISOString(),doneDay:t.date}:act==='otoday'?{date:today()}:{abandoned:true,abandonedAt:new Date().toISOString()};
-    try{await tasksRef.doc(id).update(patch);toast(act==='odone'?'Bien noté.':act==='otoday'?'Ajoutée à aujourd’hui.':'Retirée de ta liste.');if(act==='otoday')setTimeout(()=>replanToday(true),400)}
+    try{await tasksRef.doc(id).update(patch);toast(act==='odone'?'Bien noté.':act==='otoday'?'Ajoutée à aujourd’hui.':'Retirée de ta liste et de ta journée.');setTimeout(()=>replanToday(true),400)}
     catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
+  }
+  else if(act==='lmove'||act==='lskip'){
+    const t=taskById(id);if(!t)return;a.disabled=true;
+    try{
+      if(act==='lmove')await tasksRef.doc(id).update({time:null,timeWas:t.time});
+      else if(t.type==='once')await tasksRef.doc(id).update({abandoned:true,abandonedAt:new Date().toISOString()});
+      else if(S.plan)S.plan=Object.assign({},S.plan,{skipped:(S.plan.skipped||[]).concat(id)});
+      setTimeout(()=>replanToday(true),400);toast(act==='lmove'?'Life la replace plus tard dans ta journée.':t.type==='once'?'Retirée de ta liste et de ta journée.':'Retirée de ta journée.');
+    }catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
   }
   else if(act==='pushon')enablePush(a);
   else if(act==='pushtest')testPush();
@@ -1312,6 +1368,8 @@ document.addEventListener('submit',async e=>{
       if(m<w[0]||m>=w[1]){f.dataset.warned='1';const wn=$('#f-warn');wn.hidden=false;
         wn.textContent='« '+o.title+' » à '+o.time+' ? Ça ressemble plutôt à : '+MOMENTS[momentOf(o)].l.toLowerCase()+'. Corrige l’heure ou le moment, ou clique encore sur Enregistrer pour garder '+o.time+'.';
         $('#f-time').focus();return}}
+    // Heure gardée malgré l'avertissement : Life ne la retirera pas. Une nouvelle heure remplace l'ancienne retirée.
+    o.timeOk=!!(o.time&&f.dataset.warned);if(o.time)o.timeWas=null;
     if(!o.catId){toast('Crée d’abord une catégorie.');return}
     if(o.type==='rec'&&o.freq==='week'&&!o.days.length){toast('Choisis au moins un jour.');return}
     btn.disabled=true;btn.textContent='Enregistrement…';

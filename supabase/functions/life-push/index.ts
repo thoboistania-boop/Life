@@ -21,9 +21,17 @@ const parse = (s: string) => { const [y, m, d] = s.split("-").map(Number); retur
 const diffDays = (a: string, b: string) => Math.round((parse(b).getTime() - parse(a).getTime()) / 864e5);
 
 // Même règle que l'appli : la tâche est-elle prévue ce jour-là ?
+// Une tâche ponctuelle sans date, ou en retard, est prévue aujourd'hui ; un événement (soirée, concert, rdv…) seulement le jour même.
+const plain = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const EVENT_RE = /\b(soiree|concert|spectacle|fete|anniversaire|mariage|match|festival|vernissage|theatre|opera|rdv|rendez-vous)\b/;
 function dueOn(t: any, date: string) {
   const type = t.type === "daily" || t.type === "weekdays" || t.type === "weekly" || t.type === "everyN" || t.type === "rec" ? "rec" : "once";
-  if (type === "once") return !t.done && t.date === date;
+  if (type === "once") {
+    if (t.done || t.abandoned) return false;
+    if (!t.date) return true;
+    const event = t.kind === "event" || EVENT_RE.test(plain(t.title));
+    return event ? t.date === date : t.date <= date;
+  }
   if (t.start && t.start > date) return false;
   const d = parse(date), dow = d.getUTCDay();
   if (t.type === "weekdays") return dow >= 1 && dow <= 5;
@@ -78,9 +86,11 @@ Deno.serve(async (req) => {
       if (!d.time || !dueOn(d, now.date)) continue;
       const isDone = d.type === "once" || !d.type ? !!d.done : (d.doneDates || []).includes(now.date);
       const left = toMin(d.time) - now.min;
-      if (isDone || left < 1 || left > 10 || done.includes(t.id)) continue;
-      await send({ title: `Dans ${left} min`, body: `${d.title} · ${d.time}`, tag: `${now.date}-${t.id}` });
-      fresh.push(t.id);
+      // 10 minutes avant, puis à l'heure de début (rattrapage de 2 minutes si l'appel a du retard).
+      const key = left >= 1 && left <= 10 ? t.id : left <= 0 && left >= -2 ? `${t.id}@start` : null;
+      if (isDone || !key || done.includes(key)) continue;
+      await send({ title: key === t.id ? `Dans ${left} min` : "C'est maintenant", body: `${d.title} · ${d.time}`, tag: `${now.date}-${key}` });
+      fresh.push(key);
     }
     if (fresh.length) {
       await sb.from("docs").upsert({ user_id: uid, coll: "life/pushlog", id: now.date, data: { sent: done.concat(fresh) }, updated_at: new Date().toISOString() });
