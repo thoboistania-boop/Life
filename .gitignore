@@ -1,0 +1,6 @@
+# Fichiers personnels : restent sur le PC, jamais publi?s
+backlog/
+*.docx
+*.xlsx
+Life_donnees*.json
+
