@@ -1,8 +1,8 @@
-// Garde une copie des fichiers de l'appli pour l'ouvrir même avec une connexion faible.
-// Réseau d'abord, pour toujours avoir la dernière version quand internet est là.
-const CACHE = 'life-v3';
+﻿// Garde une copie des fichiers de l'appli pour l'ouvrir mÃªme avec une connexion faible.
+// RÃ©seau d'abord, pour toujours avoir la derniÃ¨re version quand internet est lÃ .
+const CACHE = 'life-v4';
 
-// Notifications envoyées par la fonction Supabase life-push.
+// Notifications envoyÃ©es par la fonction Supabase life-push.
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data && e.data.text() }; }
