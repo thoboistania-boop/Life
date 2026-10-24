@@ -345,6 +345,11 @@ const MOMENT_RULES=[
   ['open',/\b(courses|magasin|acheter|achat|boutique|pharmacie|poste|mairie|prefecture|coiffeur|garage|musee|expo|exposition|bibliotheque|shopping|grillz)\b/]
 ];
 const detectMoment=title=>{const t=plain(title);for(const r of MOMENT_RULES)if(r[1].test(t))return r[0];return 'any'};
+const MOMENT_ICON={morning:'🌅',noon:'🍽️',afternoon:'☀️',evening:'🌙',open:'🛍️',calls:'📞'};
+const autoLabel=title=>{const m=detectMoment(title);return m==='any'?'Life choisit le moment':MOMENTS[m].l+' (deviné par Life)'};
+// Petit repère à côté de la date ou de l'heure : quel moment, et qui l'a décidé.
+function momentBadge(t){const m=momentOf(t);if(m==='any'||t.time)return '';
+  return ' · '+MOMENT_ICON[m]+' '+esc(MOMENTS[m].l.toLowerCase())+' <span class="muted">('+(t.moment&&t.moment!=='auto'?'choisi par toi':'deviné par Life')+')</span>'}
 const momentOf=t=>t.moment&&t.moment!=='auto'&&MOMENTS[t.moment]?t.moment:detectMoment(t.title);
 const winOf=t=>{const m=MOMENTS[momentOf(t)];return m&&m.from!=null?[m.from,m.to]:[0,1440]};
 // Premier créneau libre qui tombe dans le bon moment de la journée.
@@ -858,7 +863,7 @@ function taskCard(i,d){
   return '<div class="glass tcard'+(done?' done':'')+'" data-act="open" data-id="'+esc(t.id)+'">'+
     '<button class="check'+(done?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(t.id)+'" aria-label="'+(done?'Marquer comme pas faite':'Marquer comme faite')+'">'+(done?'✓':'')+'</button>'+
     '<span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span>'+
-    '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="meta"><span>'+esc(c.name)+(extra?' '+extra:'')+'</span><span>· '+fmtDur(t.duration)+'</span>'+(t.time?'<span>· heure fixe</span>':'')+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div></div>'+
+    '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="meta"><span>'+esc(c.name)+(extra?' '+extra:'')+'</span><span>· '+fmtDur(t.duration)+'</span>'+(t.time?'<span>· heure fixe</span>':'')+(momentBadge(t)?'<span>'+momentBadge(t)+'</span>':'')+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div></div>'+
     '<button class="icon-btn" data-act="menu" data-id="'+esc(t.id)+'" aria-label="Plus d’actions" aria-expanded="'+(S.menu===t.id)+'">⋯</button>'+
     (S.menu===t.id?'<div class="menu" role="menu"><button role="menuitem" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button>'+(!done&&!t.time?'<button role="menuitem" data-act="replace" data-id="'+esc(t.id)+'">Remplacer par une tâche prévue plus tard</button>':'')+'</div>':'')+'</div>';
 }
@@ -888,7 +893,7 @@ function viewCat(c){
 function listItem(t,isSub){
   const c=catOf(t),subs=S.tasks.filter(x=>x.parentId===t.id).length;
   return '<div class="glass list-item'+(isSub?' sub':'')+'" data-act="open" data-id="'+esc(t.id)+'"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div class="body"><div class="t">'+(isSub?'↳ ':'')+esc(t.title)+(t.type==='once'&&t.done?' ✓':'')+(t.abandoned?' <span class="small muted">(abandonnée)</span>':'')+'</div>'+
-  '<div class="small muted">'+esc(recLabel(t))+(t.time?' · '+esc(t.time):'')+' · '+fmtDur(t.duration)+' · '+esc(EFFORT[t.effort].toLowerCase())+(t.mandatory?' · obligatoire':'')+(subs?' · '+subs+' sous-tâche'+(subs>1?'s':''):'')+'</div></div>'+
+  '<div class="small muted">'+esc(recLabel(t))+(t.time?' · '+esc(t.time):'')+momentBadge(t)+' · '+fmtDur(t.duration)+' · '+esc(EFFORT[t.effort].toLowerCase())+(t.mandatory?' · obligatoire':'')+(subs?' · '+subs+' sous-tâche'+(subs>1?'s':''):'')+'</div></div>'+
   '<div class="big" style="font-size:1rem" title="Priorité">'+esc(t.priority||5)+'</div></div>';
 }
 function viewHistory(){
@@ -986,9 +991,10 @@ function taskForm(t,preset){
     '<div class="f" id="f-dayswrap" '+(t.freq==='week'?'':'hidden')+'>Quels jours ?<div class="days" id="f-days">'+DAYS.map(d=>'<button type="button" data-day="'+d[0]+'" aria-pressed="'+(t.days||[]).includes(d[0])+'">'+d[1]+'</button>').join('')+'</div></div>'+
     '<label class="f" id="f-mdaywrap" '+(t.freq==='month'?'':'hidden')+'>Quel jour du mois ?<input type="number" id="f-mday" min="1" max="31" value="'+esc(t.monthDay||1)+'"></label></div>'+
   '<div class="grid2" id="f-oncewrap" '+(t.type==='once'?'':'hidden')+'><label class="f">Jour prévu (facultatif)<input type="date" id="f-date" value="'+esc(t.date||'')+'"></label><label class="f">Date limite (facultatif)<input type="date" id="f-deadline" value="'+esc(t.deadline||'')+'"></label></div>'+
-  '<label class="f">Heure précise (facultatif, sinon Life choisit)<input type="time" id="f-time" value="'+esc(t.time||'')+'"></label>'+
-  '<label class="f">Moment de la journée<select id="f-moment"><option value="auto">Automatique : '+esc(MOMENTS[detectMoment(t.title)].l)+'</option>'+
-    Object.keys(MOMENTS).map(k=>'<option value="'+k+'"'+(t.moment===k?' selected':'')+'>'+esc(MOMENTS[k].l)+'</option>').join('')+'</select></label>'+
+  '<div class="grid2"><label class="f">Heure précise (sinon Life choisit)<input type="time" id="f-time" value="'+esc(t.time||'')+'"></label>'+
+  '<label class="f">Ou plutôt…<select id="f-moment"><option value="auto">'+esc(autoLabel(t.title))+'</option>'+
+    Object.keys(MOMENTS).filter(k=>k!=='any').map(k=>'<option value="'+k+'"'+(t.moment===k?' selected':'')+'>'+esc(MOMENTS[k].l)+' (choisi par toi)</option>').join('')+
+    '<option value="any"'+(t.moment==='any'?' selected':'')+'>N’importe quand (choisi par toi)</option></select></label></div>'+
   '<p id="f-warn" class="small" style="color:var(--warn)" role="alert" hidden></p>'+
   '<div class="f">Durée (minutes)<div class="presets">'+PRESETS.map(m=>'<button type="button" data-min="'+m+'">'+fmtDur(m)+'</button>').join('')+'</div><input type="number" id="f-dur" min="5" max="600" value="'+esc(t.duration)+'" aria-label="Durée en minutes"></div>'+
   '<label class="f">Effort : <span id="f-efflabel">'+esc(EFFORT[t.effort])+'</span><input type="range" id="f-effort" min="1" max="5" value="'+esc(t.effort)+'"></label>'+
@@ -1026,9 +1032,8 @@ function taskDetail(t){
   return '<div class="spread"><div class="row">'+chip(c)+extra.map(chip).join('')+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div><button class="icon-btn" data-act="close" aria-label="Fermer">✕</button></div>'+
   '<h2>'+esc(t.title)+'</h2>'+
   (parent?'<div class="small">Sous-tâche de <button class="link" data-act="open" data-id="'+esc(parent.id)+'">'+esc(parent.title)+'</button></div>':'')+
-  '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
+  '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+momentBadge(t)+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
   '<div>'+(t.mandatory?'📌 Obligatoire':'🌤️ Facultative')+(t.atWork?' · faisable au travail':'')+'</div>'+
-  '<div>🕐 '+esc(MOMENTS[momentOf(t)].l)+(!t.moment||t.moment==='auto'?' (deviné d’après le titre)':'')+'</div>'+
   (t.desc?'<div class="ai-out">'+esc(t.desc)+'</div>':'')+(t.imageUrl?'<img class="thumb" src="'+esc(t.imageUrl)+'" alt="Image de la tâche">':'')+'</div>'+
   (subs.length?'<div class="stack" style="gap:6px"><h3>Sous-tâches</h3>'+subs.map(x=>'<div class="glass tcard'+(isDone(x,d)?' done':'')+'" data-act="open" data-id="'+esc(x.id)+'"><button class="check'+(isDone(x,d)?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(x.id)+'" data-refresh="'+esc(t.id)+'" aria-label="Cocher">'+(isDone(x,d)?'✓':'')+'</button><div class="body"><div class="t">'+esc(x.title)+'</div><div class="meta">'+esc(recLabel(x))+' · '+fmtDur(x.duration)+'</div></div></div>').join('')+'</div>':'')+
   '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button><button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
@@ -1271,7 +1276,7 @@ document.addEventListener('keydown',e=>{
   if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('cell')){e.preventDefault();openSheet(daySheet(e.target.dataset.date))}
 });
 document.addEventListener('input',e=>{
-  if(e.target.id==='f-title'){const s=$('#f-moment');if(s&&s.options[0])s.options[0].textContent='Automatique : '+MOMENTS[detectMoment(e.target.value)].l}
+  if(e.target.id==='f-title'){const s=$('#f-moment');if(s&&s.options[0])s.options[0].textContent=autoLabel(e.target.value)}
   if(e.target.id==='f-effort')$('#f-efflabel').textContent=EFFORT[+e.target.value];
   if(e.target.id==='f-prio')$('#f-priolabel').textContent=e.target.value+'/10';
   if(e.target.id==='c-prio')$('#c-priolabel').textContent=e.target.value+'/10';
