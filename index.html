@@ -322,10 +322,36 @@ function dueOn(t,date){
     if(t.freq==='month'){const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();return d.getDate()===Math.min(+t.monthDay||1,last)}
     const n=Math.max(1,+t.every||1);const k=diffDays(t.start||date,date);return k>=0&&k%n===0;
   }
-  if(t.done)return false;const td=today();
-  if(t.date)return date===td?t.date<=date:t.date===date;
+  if(t.done||t.abandoned)return false;const td=today();
+  if(t.date){if(isEvent(t))return t.date===date&&date>=td;return date===td?t.date<=date:t.date===date}
   return date>=td;
 }
+/* Moment de la journée : deviné d'après le titre, modifiable dans la tâche. Fenêtres en minutes depuis minuit. */
+const plain=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const MOMENTS={
+  any:{l:'N’importe quand'},
+  morning:{l:'Le matin',from:360,to:720},
+  noon:{l:'Le midi',from:690,to:870},
+  afternoon:{l:'L’après-midi',from:810,to:1110},
+  evening:{l:'Le soir',from:1080,to:1440},
+  open:{l:'Heures d’ouverture des magasins',from:570,to:1140},
+  calls:{l:'Heures de bureau (appels, démarches)',from:540,to:1080}
+};
+const MOMENT_RULES=[
+  ['evening',/\b(soiree|diner|apero|concert|boite|club|fete|teuf|spectacle|theatre|opera|karaoke|afterwork|bar)\b/],
+  ['noon',/\b(dejeuner|brunch|pause dej)/],
+  ['morning',/\b(petit[- ]?dej|footing|jogging|meditation|matinale)/],
+  ['calls',/\b(appeler|telephoner|rappeler|prendre (un )?rdv|prendre rendez-vous)\b/],
+  ['open',/\b(courses|magasin|acheter|achat|boutique|pharmacie|poste|mairie|prefecture|coiffeur|garage|musee|expo|exposition|bibliotheque|shopping|grillz)\b/]
+];
+const detectMoment=title=>{const t=plain(title);for(const r of MOMENT_RULES)if(r[1].test(t))return r[0];return 'any'};
+const momentOf=t=>t.moment&&t.moment!=='auto'&&MOMENTS[t.moment]?t.moment:detectMoment(t.title);
+const winOf=t=>{const m=MOMENTS[momentOf(t)];return m&&m.from!=null?[m.from,m.to]:[0,1440]};
+// Premier créneau libre qui tombe dans le bon moment de la journée.
+const fitSlot=(ivs,t)=>{const w=winOf(t);for(const iv of ivs){const s=Math.max(iv[0],w[0]),e=Math.min(iv[1],w[1]);if(e-s>=t.duration)return [s,e]}return null};
+// Un événement (soirée, concert, rendez-vous…) ne se reporte pas tout seul : s'il est passé, Life demande.
+const EVENT_RE=/\b(soiree|concert|spectacle|fete|anniversaire|mariage|match|festival|vernissage|theatre|opera|rdv|rendez-vous)\b/;
+const isEvent=t=>t.type==='once'&&!!t.date&&(t.kind==='event'||EVENT_RE.test(plain(t.title)));
 const loadFactor=()=>S.autoLF*(+((S.profile||{}).loadBias)||1);
 function generate(date,o){
   o=o||{};const pinned=o.pinned||[],skipped=o.skipped||[],exclude=o.exclude||new Set();
@@ -366,7 +392,7 @@ function generate(date,o){
     sel.push(t);freeLeft-=d+10;if(!must)budget-=d;if(t.effort>=4)heavy++;
   }
   sel.sort(cmp).forEach(t=>{
-    const slot=freeIntervals().find(iv=>iv[1]-iv[0]>=t.duration);if(!slot)return;
+    const slot=fitSlot(freeIntervals(),t);if(!slot)return;
     const s=slot[0],e=s+t.duration;items.push({tid:t.id,s,e});busy.push([s,e+10]);used.add(t.id);
   });
   items.sort((a,b)=>a.s-b.s);
@@ -805,7 +831,7 @@ function viewHome(){
   const banner=p.v!==2?'<div class="glass pad stack"><h3>Nouvelle version de Life</h3><p class="small">Les catégories ont changé (plus d’Études ni de santé). Tu peux repartir de zéro avec le nouveau choix de catégories, ou garder tes données actuelles.</p><div class="row"><button class="btn" data-act="reset">Repartir de zéro</button><button class="btn soft" data-act="keepv2">Garder mes données</button></div></div>':'';
   const fb=total&&done===total&&!S.fbHidden?'<div class="glass pad stack"><h3>Tout est fait 🎉</h3><p class="small">C’était assez pour aujourd’hui ?</p><div class="row"><button class="btn" data-act="more">Ajoute-moi des tâches</button><button class="btn soft" data-act="fbok">C’était parfait</button></div></div>':'';
   return '<div class="top"><div class="logo"><i></i>Life</div><button class="btn" data-act="new">+ Créer une tâche</button></div>'+
-    '<form id="home-ask" class="askbar glass"><input type="text" id="homeask" placeholder="Demande quelque chose à Life…" maxlength="1000" autocomplete="off" aria-label="Demande à Life"><button class="btn" type="submit" aria-label="Envoyer">→</button></form>'+banner+
+    '<form id="home-ask" class="askbar glass"><input type="text" id="homeask" placeholder="Demande quelque chose à Life…" maxlength="1000" autocomplete="off" aria-label="Demande à Life"><button class="btn" type="submit" aria-label="Envoyer">→</button></form>'+banner+overdueCard()+
     '<div class="glass pad stack"><div class="spread"><b style="text-transform:capitalize">'+esc(fmtDay(d))+'</b><span class="small muted">'+done+' / '+total+' faites</span></div>'+
     (wxDay(d)?'<div class="wx">'+WX((S.weather.now||wxDay(d)).code)[0]+' '+(S.weather.now?S.weather.now.t+'° · ':'')+esc(WX(wxDay(d).code)[1])+' · '+wxDay(d).min+'° / '+wxDay(d).max+'°'+(wxDay(d).rain!=null?' · pluie '+wxDay(d).rain+' %':'')+'</div>':'')+'<div class="progress" role="progressbar" aria-valuenow="'+pct+'" aria-valuemin="0" aria-valuemax="100"><b style="width:'+pct+'%"></b></div>'+
     '<div class="spread small muted"><span>'+(S.rate!=null?(loadFactor()>1.02?'Tu gères : Life ajoute un peu.':loadFactor()<0.98?'Life allège ta charge.':'Charge équilibrée.'):'Life apprend ton rythme.')+'</span><span class="row"><button class="link" data-act="lighter">Trop chargée ? Alléger</button><button class="link" data-act="replan">Replanifier</button></span></div></div>'+fb+
@@ -814,6 +840,16 @@ function viewHome(){
     (S.tasks.length?'':'<div class="glass pad empty"><p>Aucune tâche pour l’instant.</p><button class="btn" data-act="new">Créer ma première tâche</button></div>')+
     '<div class="timeline">'+entries.map(e=>e.html).join('')+'</div></section>'+
     '<section class="stack" style="gap:10px"><h2>Les prochains jours</h2><div class="next">'+next+'</div><div><button class="link" data-act="gocal">Voir la vue calendaire</button></div></section>';
+}
+// Tâches ponctuelles dont la date est passée : Life demande ce qu'on en fait au lieu de les traîner.
+function overdueCard(){
+  const td=today();
+  const late=S.tasks.filter(t=>t.type==='once'&&!t.done&&!t.abandoned&&t.date&&t.date<td).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,6);
+  if(!late.length)return '';
+  return '<div class="glass pad stack"><h3>On fait le point ?</h3>'+late.map(t=>{const ev=isEvent(t),c=catOf(t);
+    return '<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:8px"><div class="row"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div style="flex:1;min-width:0"><b>'+esc(t.title)+'</b><div class="small muted">'+(ev?'C’était le '+esc(fmtShort(t.date))+'. Tu y es allée ?':'Prévue le '+esc(fmtShort(t.date))+', pas encore faite.')+'</div></div></div>'+
+    '<div class="row">'+(ev?'<button class="btn soft" data-act="odone" data-id="'+esc(t.id)+'">Oui</button><button class="btn soft" data-act="oabandon" data-id="'+esc(t.id)+'">Non, retirer</button>':
+      '<button class="btn soft" data-act="odone" data-id="'+esc(t.id)+'">Fait</button><button class="btn soft" data-act="otoday" data-id="'+esc(t.id)+'">Aujourd’hui</button><button class="btn soft" data-act="oabandon" data-id="'+esc(t.id)+'">Abandonner</button>')+'</div></div>'}).join('')+'</div>';
 }
 function marker(m,label){return '<div class="tl marker"><div class="time">'+toHM(m)+'</div><div class="marker-line">'+label+'</div></div>'}
 function taskCard(i,d){
@@ -840,7 +876,7 @@ function viewTasks(){
 }
 function viewCat(c){
   const ts=S.tasks.filter(t=>c.id?inCat(t,c.id):!S.cats.find(x=>x.id===t.catId));
-  const open=ts.filter(t=>!(t.type==='once'&&t.done)),closed=ts.filter(t=>t.type==='once'&&t.done);
+  const open=ts.filter(t=>!(t.type==='once'&&(t.done||t.abandoned))),closed=ts.filter(t=>t.type==='once'&&(t.done||t.abandoned));
   const roots=open.filter(t=>!t.parentId||!open.find(x=>x.id===t.parentId)).sort((a,b)=>(+b.priority||5)-(+a.priority||5));
   const tree=roots.map(t=>listItem(t)+open.filter(x=>x.parentId===t.id).map(x=>listItem(x,true)).join('')).join('');
   return '<div><button class="link" data-act="backcats">‹ Toutes les catégories</button></div>'+
@@ -851,7 +887,7 @@ function viewCat(c){
 }
 function listItem(t,isSub){
   const c=catOf(t),subs=S.tasks.filter(x=>x.parentId===t.id).length;
-  return '<div class="glass list-item'+(isSub?' sub':'')+'" data-act="open" data-id="'+esc(t.id)+'"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div class="body"><div class="t">'+(isSub?'↳ ':'')+esc(t.title)+(t.type==='once'&&t.done?' ✓':'')+'</div>'+
+  return '<div class="glass list-item'+(isSub?' sub':'')+'" data-act="open" data-id="'+esc(t.id)+'"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div class="body"><div class="t">'+(isSub?'↳ ':'')+esc(t.title)+(t.type==='once'&&t.done?' ✓':'')+(t.abandoned?' <span class="small muted">(abandonnée)</span>':'')+'</div>'+
   '<div class="small muted">'+esc(recLabel(t))+(t.time?' · '+esc(t.time):'')+' · '+fmtDur(t.duration)+' · '+esc(EFFORT[t.effort].toLowerCase())+(t.mandatory?' · obligatoire':'')+(subs?' · '+subs+' sous-tâche'+(subs>1?'s':''):'')+'</div></div>'+
   '<div class="big" style="font-size:1rem" title="Priorité">'+esc(t.priority||5)+'</div></div>';
 }
@@ -951,6 +987,9 @@ function taskForm(t,preset){
     '<label class="f" id="f-mdaywrap" '+(t.freq==='month'?'':'hidden')+'>Quel jour du mois ?<input type="number" id="f-mday" min="1" max="31" value="'+esc(t.monthDay||1)+'"></label></div>'+
   '<div class="grid2" id="f-oncewrap" '+(t.type==='once'?'':'hidden')+'><label class="f">Jour prévu (facultatif)<input type="date" id="f-date" value="'+esc(t.date||'')+'"></label><label class="f">Date limite (facultatif)<input type="date" id="f-deadline" value="'+esc(t.deadline||'')+'"></label></div>'+
   '<label class="f">Heure précise (facultatif, sinon Life choisit)<input type="time" id="f-time" value="'+esc(t.time||'')+'"></label>'+
+  '<label class="f">Moment de la journée<select id="f-moment"><option value="auto">Automatique : '+esc(MOMENTS[detectMoment(t.title)].l)+'</option>'+
+    Object.keys(MOMENTS).map(k=>'<option value="'+k+'"'+(t.moment===k?' selected':'')+'>'+esc(MOMENTS[k].l)+'</option>').join('')+'</select></label>'+
+  '<p id="f-warn" class="small" style="color:var(--warn)" role="alert" hidden></p>'+
   '<div class="f">Durée (minutes)<div class="presets">'+PRESETS.map(m=>'<button type="button" data-min="'+m+'">'+fmtDur(m)+'</button>').join('')+'</div><input type="number" id="f-dur" min="5" max="600" value="'+esc(t.duration)+'" aria-label="Durée en minutes"></div>'+
   '<label class="f">Effort : <span id="f-efflabel">'+esc(EFFORT[t.effort])+'</span><input type="range" id="f-effort" min="1" max="5" value="'+esc(t.effort)+'"></label>'+
   '<label class="f">Priorité dans la catégorie : <span id="f-priolabel">'+esc(t.priority||5)+'/10</span><input type="range" id="f-prio" min="1" max="10" value="'+esc(t.priority||5)+'"></label>'+
@@ -970,7 +1009,7 @@ function readTaskForm(){
   const type=pressed('f-type')||'once',catId=v('f-cat');
   const o={title:v('f-title'),catId,catIds:$$('#f-cats [aria-pressed="true"]').map(b=>b.dataset.v).filter(x=>x!==catId),type,
     duration:Math.max(5,+v('f-dur')||30),effort:+v('f-effort')||2,priority:+v('f-prio')||5,mandatory:$('#f-mand').checked,atWork:$('#f-work').checked,
-    desc:v('f-desc'),time:v('f-time')||null,parentId:v('f-parent')||null};
+    desc:v('f-desc'),time:v('f-time')||null,parentId:v('f-parent')||null,moment:v('f-moment')||'auto'};
   if(type==='once'){o.date=v('f-date')||null;o.deadline=v('f-deadline')||null}
   else{o.freq=pressed('f-freq')||'day';o.every=Math.max(1,+v('f-every')||1);o.days=$$('#f-days [aria-pressed="true"]').map(b=>+b.dataset.day);o.monthDay=Math.min(31,Math.max(1,+v('f-mday')||1))}
   return o;
@@ -989,6 +1028,7 @@ function taskDetail(t){
   (parent?'<div class="small">Sous-tâche de <button class="link" data-act="open" data-id="'+esc(parent.id)+'">'+esc(parent.title)+'</button></div>':'')+
   '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
   '<div>'+(t.mandatory?'📌 Obligatoire':'🌤️ Facultative')+(t.atWork?' · faisable au travail':'')+'</div>'+
+  '<div>🕐 '+esc(MOMENTS[momentOf(t)].l)+(!t.moment||t.moment==='auto'?' (deviné d’après le titre)':'')+'</div>'+
   (t.desc?'<div class="ai-out">'+esc(t.desc)+'</div>':'')+(t.imageUrl?'<img class="thumb" src="'+esc(t.imageUrl)+'" alt="Image de la tâche">':'')+'</div>'+
   (subs.length?'<div class="stack" style="gap:6px"><h3>Sous-tâches</h3>'+subs.map(x=>'<div class="glass tcard'+(isDone(x,d)?' done':'')+'" data-act="open" data-id="'+esc(x.id)+'"><button class="check'+(isDone(x,d)?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(x.id)+'" data-refresh="'+esc(t.id)+'" aria-label="Cocher">'+(isDone(x,d)?'✓':'')+'</button><div class="body"><div class="t">'+esc(x.title)+'</div><div class="meta">'+esc(recLabel(x))+' · '+fmtDur(x.duration)+'</div></div></div>').join('')+'</div>':'')+
   '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button><button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
@@ -1024,7 +1064,7 @@ async function replaceTask(id){
   const fp=futurePlans(addDays(d,14));const later=[];const when={};
   Object.keys(fp).sort().filter(x=>x>d).forEach(x=>fp[x].items.forEach(i=>{const t=taskById(i.tid);if(t&&t.type==='once'&&!later.includes(t)){later.push(t);when[t.id]=x}}));
   S.tasks.filter(t=>t.type==='once'&&!t.done&&!inPlan.has(t.id)&&!later.includes(t)&&dueOn(t,d)).forEach(t=>later.push(t));
-  const ok=t=>!inPlan.has(t.id)&&!t.time&&t.duration<=room&&!(plan.skipped||[]).includes(t.id);
+  const ok=t=>{const w=winOf(t);return !inPlan.has(t.id)&&!t.time&&!isEvent(t)&&t.duration<=room&&!(plan.skipped||[]).includes(t.id)&&item.s>=w[0]&&item.s+t.duration<=w[1]};
   const alt=later.find(t=>ok(t)&&t.effort===old.effort)||later.find(t=>ok(t)&&Math.abs(t.effort-old.effort)===1);
   if(!alt){toast('Aucune tâche d’effort similaire n’est prévue plus tard.');return}
   const items=plan.items.filter(i=>i.tid!==id).concat({tid:alt.id,s:item.s,e:item.s+alt.duration,w:!!item.w}).sort((a,b)=>a.s-b.s);
@@ -1059,7 +1099,7 @@ async function fillToday(cur,quiet){
   const items=cur.items.slice(),added=[];
   for(const t of cands){
     if(used+t.duration>cap)continue;
-    const slot=fi().find(iv=>iv[1]-iv[0]>=t.duration);if(!slot)continue;
+    const slot=fitSlot(fi(),t);if(!slot)continue;
     items.push({tid:t.id,s:slot[0],e:slot[0]+t.duration});busy.push([slot[0],slot[0]+t.duration+10]);used+=t.duration+10;added.push(t);
     if(added.length>=8)break;
   }
@@ -1206,6 +1246,12 @@ document.addEventListener('click',async e=>{
     if(!a.dataset.confirm){a.dataset.confirm='1';a.textContent='Confirmer la suppression';return}
     try{await catsRef.doc(id).delete();closeSheet();S.catPage='list';render();toast('Catégorie supprimée.')}catch(err){toast('Pas supprimée. Réessaie.')}
   }
+  else if(act==='odone'||act==='otoday'||act==='oabandon'){
+    const t=taskById(id);if(!t)return;a.disabled=true;
+    const patch=act==='odone'?{done:true,doneAt:new Date().toISOString(),doneDay:t.date}:act==='otoday'?{date:today()}:{abandoned:true,abandonedAt:new Date().toISOString()};
+    try{await tasksRef.doc(id).update(patch);toast(act==='odone'?'Bien noté.':act==='otoday'?'Ajoutée à aujourd’hui.':'Retirée de ta liste.');if(act==='otoday')setTimeout(()=>replanToday(true),400)}
+    catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
+  }
   else if(act==='pushon')enablePush(a);
   else if(act==='pushtest')testPush();
   else if(act==='authswitch'){S.auth=S.auth==='signup'?'signin':'signup';$('#app').innerHTML='';render()}
@@ -1225,6 +1271,7 @@ document.addEventListener('keydown',e=>{
   if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('cell')){e.preventDefault();openSheet(daySheet(e.target.dataset.date))}
 });
 document.addEventListener('input',e=>{
+  if(e.target.id==='f-title'){const s=$('#f-moment');if(s&&s.options[0])s.options[0].textContent='Automatique : '+MOMENTS[detectMoment(e.target.value)].l}
   if(e.target.id==='f-effort')$('#f-efflabel').textContent=EFFORT[+e.target.value];
   if(e.target.id==='f-prio')$('#f-priolabel').textContent=e.target.value+'/10';
   if(e.target.id==='c-prio')$('#c-priolabel').textContent=e.target.value+'/10';
@@ -1255,6 +1302,11 @@ document.addEventListener('submit',async e=>{
   if(f.id==='chat-form'){const inp=$('#chat-in');const v=inp.value.trim();if(!v)return;inp.value='';sendChat(v);return}
   if(f.id==='task-form'){
     const o=readTaskForm();if(!o.title)return;
+    // Incohérence entre l'heure et le moment de la journée (ex. « Soirée » à 12:20) : on prévient une fois.
+    if(o.time&&!f.dataset.warned){const w=winOf(o),m=toMin(o.time);
+      if(m<w[0]||m>=w[1]){f.dataset.warned='1';const wn=$('#f-warn');wn.hidden=false;
+        wn.textContent='« '+o.title+' » à '+o.time+' ? Ça ressemble plutôt à : '+MOMENTS[momentOf(o)].l.toLowerCase()+'. Corrige l’heure ou le moment, ou clique encore sur Enregistrer pour garder '+o.time+'.';
+        $('#f-time').focus();return}}
     if(!o.catId){toast('Crée d’abord une catégorie.');return}
     if(o.type==='rec'&&o.freq==='week'&&!o.days.length){toast('Choisis au moins un jour.');return}
     btn.disabled=true;btn.textContent='Enregistrement…';
