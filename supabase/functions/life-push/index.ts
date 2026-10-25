@@ -4,6 +4,8 @@
 // Les clés VAPID et le jeton d'appel sont lus dans la table privée public.life_secrets.
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import "./planner.js"; // même cerveau de planning que l'appli
+const P = (globalThis as any).LifePlanner;
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -44,6 +46,19 @@ function dueOn(t: any, date: string) {
   return k >= 0 && k % n === 0;
 }
 
+// Météo du jour en une ligne (Open-Meteo, gratuit) : « ☀️ 14° ». Vide si la ville est inconnue ou le service muet.
+const WX = (c: number) => c === 0 ? "☀️" : c <= 2 ? "🌤️" : c === 3 ? "☁️" : c <= 48 ? "🌫️" : c <= 67 ? "🌧️" : c <= 77 ? "❄️" : c <= 82 ? "🌧️" : c <= 86 ? "🌨️" : "⛈️";
+async function weatherLine(city?: string) {
+  try {
+    const g = await (await fetch("https://geocoding-api.open-meteo.com/v1/search?count=1&language=fr&name=" + encodeURIComponent(city || "Paris"), { signal: AbortSignal.timeout(5000) })).json();
+    const loc = g.results?.[0]; if (!loc) return "";
+    const w = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&daily=weather_code,temperature_2m_max,precipitation_probability_max&timezone=Europe%2FParis&forecast_days=1`, { signal: AbortSignal.timeout(5000) })).json();
+    const code = w.daily?.weather_code?.[0], max = w.daily?.temperature_2m_max?.[0], rain = w.daily?.precipitation_probability_max?.[0];
+    if (code == null) return "";
+    return `${WX(code)} ${Math.round(max)}°${rain >= 50 ? ` · pluie ${rain} %` : ""}`;
+  } catch { return ""; }
+}
+
 Deno.serve(async (req) => {
   const { data: secrets } = await sb.from("life_secrets").select("name,value");
   const S = Object.fromEntries((secrets || []).map((r: any) => [r.name, r.value]));
@@ -51,7 +66,7 @@ Deno.serve(async (req) => {
   webpush.setVapidDetails(S.vapid_subject || "mailto:life@example.com", S.vapid_public, S.vapid_private);
 
   const { data: rows } = await sb.from("docs").select("user_id,coll,id,data")
-    .in("coll", ["life/push", "life/pushqueue", "life/pushlog", "life/profile/tasks", "life/profile/plans", "life"]);
+    .in("coll", ["life/push", "life/pushqueue", "life/pushlog", "life/profile/tasks", "life/profile/plans", "life/profile/categories", "life"]);
   const all = (rows || []) as Row[];
   const by = (coll: string, uid: string) => all.filter((r) => r.coll === coll && r.user_id === uid);
   const users = [...new Set(all.filter((r) => r.coll === "life/push").map((r) => r.user_id))];
@@ -81,6 +96,39 @@ Deno.serve(async (req) => {
     const log = by("life/pushlog", uid).find((r) => r.id === now.date);
     const done: string[] = log?.data?.sent || [];
     const fresh: string[] = [];
+
+    // Message du réveil : à l'heure du réveil, Life prépare la journée (si l'appli ne l'a pas déjà fait)
+    // et l'envoie en résumé, une ligne par tâche.
+    const wake = toMin(profile.wake || "07:00");
+    const force = new URL(req.url).searchParams.get("brief") === "1"; // essai manuel (appel protégé par le jeton)
+    if (force || (profile.morning !== false && now.min >= wake && now.min <= wake + 15 && !done.includes("brief"))) {
+      const tasksN = by("life/profile/tasks", uid).map((r) => P.norm({ id: r.id, ...r.data }));
+      const cats = by("life/profile/categories", uid).map((r) => ({ id: r.id, ...r.data }));
+      let plan = all.find((r) => r.user_id === uid && r.coll === "life/profile/plans" && r.id === now.date)?.data;
+      if (!plan) {
+        plan = P.generate({ tasks: tasksN, cats, profile, autoLF: 1, today: now.date, nowMin: now.min }, now.date, { fromNow: true });
+        const data = { date: now.date, items: plan.items, skipped: [], at: new Date().toISOString(), by: "morning" };
+        await sb.from("docs").upsert({ user_id: uid, coll: "life/profile/plans", id: now.date, data, updated_at: new Date().toISOString() });
+        all.push({ user_id: uid, coll: "life/profile/plans", id: now.date, data });
+      }
+      const emoji = (t: any) => (cats.find((c: any) => c.id === t.catId) || {}).emoji || "•";
+      const lines: string[] = [];
+      for (const it of plan.items || []) {
+        const t = tasksN.find((x: any) => x.id === it.tid);
+        if (!t || P.isDone(t, now.date)) continue;
+        lines.push(`${it.w ? "💼" : P.toHM(it.s)} ${emoji(t)} ${t.title}`);
+      }
+      const shown = lines.slice(0, 8);
+      if (lines.length > 8) shown.push(`+ ${lines.length - 8} autre${lines.length - 8 > 1 ? "s" : ""}`);
+      const day = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "short" }).format(new Date());
+      const wx = await weatherLine(profile.city);
+      await send({
+        title: `Ta journée · ${day.charAt(0).toUpperCase() + day.slice(1)}${wx ? " · " + wx : ""}`,
+        body: shown.length ? shown.join("\n") : "Rien de prévu aujourd'hui : profite de ta journée.",
+        tag: `${now.date}-brief`,
+      });
+      if (!force) fresh.push("brief");
+    }
     for (const t of by("life/profile/tasks", uid)) {
       const d = t.data;
       if (!d.time || !dueOn(d, now.date)) continue;
