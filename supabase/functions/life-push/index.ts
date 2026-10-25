@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
   webpush.setVapidDetails(S.vapid_subject || "mailto:life@example.com", S.vapid_public, S.vapid_private);
 
   const { data: rows } = await sb.from("docs").select("user_id,coll,id,data")
-    .in("coll", ["life/push", "life/pushqueue", "life/pushlog", "life/profile/tasks", "life"]);
+    .in("coll", ["life/push", "life/pushqueue", "life/pushlog", "life/profile/tasks", "life/profile/plans", "life"]);
   const all = (rows || []) as Row[];
   const by = (coll: string, uid: string) => all.filter((r) => r.coll === coll && r.user_id === uid);
   const users = [...new Set(all.filter((r) => r.coll === "life/push").map((r) => r.user_id))];
@@ -90,6 +90,22 @@ Deno.serve(async (req) => {
       const key = left >= 1 && left <= 10 ? t.id : left <= 0 && left >= -2 ? `${t.id}@start` : null;
       if (isDone || !key || done.includes(key)) continue;
       await send({ title: key === t.id ? `Dans ${left} min` : "C'est maintenant", body: `${d.title} · ${d.time}`, tag: `${now.date}-${key}` });
+      fresh.push(key);
+    }
+    // Tâches sans heure fixe : on suit le planning du jour calculé par l'appli (créneau choisi par Life).
+    const plan = all.find((r) => r.user_id === uid && r.coll === "life/profile/plans" && r.id === now.date)?.data;
+    const tasks = by("life/profile/tasks", uid);
+    for (const it of plan?.items || []) {
+      if (it.w) continue;
+      const t = tasks.find((x) => x.id === it.tid);
+      if (!t || t.data.time) continue;
+      const d = t.data;
+      const isDone = d.type === "once" || !d.type ? !!d.done || !!d.abandoned : (d.doneDates || []).includes(now.date);
+      const left = Number(it.s) - now.min;
+      const key = `${t.id}@plan`;
+      if (isDone || left > 5 || left < -2 || done.includes(key) || fresh.includes(key)) continue;
+      const hh = String(Math.floor(it.s / 60)).padStart(2, "0") + ":" + String(it.s % 60).padStart(2, "0");
+      await send({ title: left > 0 ? `Dans ${left} min` : "C'est le moment", body: `${d.title} · ${hh}`, tag: `${now.date}-${key}` });
       fresh.push(key);
     }
     if (fresh.length) {

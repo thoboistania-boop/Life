@@ -793,8 +793,19 @@ function pushStateText(){
   return S.pushOn?'✅ Activées sur cet appareil.':'Pas encore activées sur cet appareil.';
 }
 function b64uToBytes(s){const p='='.repeat((4-s.length%4)%4);const b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(b,c=>c.charCodeAt(0))}
+// À chaque ouverture : si les notifications sont déjà autorisées, on (ré)abonne l'appareil sans rien demander,
+// pour qu'elles restent actives même après une réinstallation de l'icône.
+async function saveSub(sub){
+  const j=sub.toJSON();let h=0;for(const c of j.endpoint)h=(h*31+c.charCodeAt(0))>>>0;
+  await db.collection('life/push').doc('d'+h.toString(36)).set({sub:j,device:navigator.userAgent.slice(0,120),at:new Date().toISOString()});
+}
 async function checkPush(){
-  try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();S.pushOn=!!sub;const el=$('#push-state');if(el)el.textContent=pushStateText()}catch(e){}
+  try{
+    const reg=await navigator.serviceWorker.ready;let sub=await reg.pushManager.getSubscription();
+    if(!sub&&typeof Notification!=='undefined'&&Notification.permission==='granted')sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToBytes(VAPID_PUBLIC)});
+    if(sub)await saveSub(sub);
+    S.pushOn=!!sub;const el=$('#push-state');if(el)el.textContent=pushStateText();
+  }catch(e){}
 }
 async function enablePush(btn){
   if(!('serviceWorker' in navigator)||!('PushManager' in window)){toast(pushStateText());return}
@@ -804,8 +815,7 @@ async function enablePush(btn){
     if(perm!=='granted'){toast('Notifications non autorisées.');return}
     const reg=await navigator.serviceWorker.ready;
     const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToBytes(VAPID_PUBLIC)});
-    const j=sub.toJSON();let h=0;for(const c of j.endpoint)h=(h*31+c.charCodeAt(0))>>>0;
-    await db.collection('life/push').doc('d'+h.toString(36)).set({sub:j,device:navigator.userAgent.slice(0,120),at:new Date().toISOString()});
+    await saveSub(sub);
     S.pushOn=true;toast('Notifications activées.');
   }catch(e){toast('Activation impossible : '+(e&&e.message||'erreur'))}
   finally{btn.disabled=false;const el=$('#push-state');if(el)el.textContent=pushStateText()}
