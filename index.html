@@ -154,6 +154,12 @@ input[type=range]{width:100%;accent-color:var(--ink)}
 .bar{height:6px;border-radius:3px;background:var(--c,var(--grey));border:1px solid rgba(43,38,51,.15)}
 .ai-out{white-space:pre-wrap;background:var(--white);border:1px solid var(--line);border-radius:var(--r-btn);padding:12px 14px;font-size:.92rem;overflow-wrap:anywhere}
 .thumb{max-width:100%;max-height:220px;border-radius:var(--r-btn);object-fit:cover}
+/* Images des tâches : bannière en haut, images pleine largeur dans la description */
+.cover{display:block;width:100%;height:200px;object-fit:cover;border-radius:var(--r-btn);background:var(--line)}
+.dimg{display:block;width:100%;height:auto;min-height:60px;border-radius:var(--r-btn);background:var(--line)}
+.desc-view{display:flex;flex-direction:column;gap:10px}
+.img-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.img-tools input[type=file]{display:none}
 .rule{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:var(--r-btn);background:var(--white);font-weight:400;color:var(--ink);cursor:pointer}
 .rule input{margin-top:3px;accent-color:var(--ink)}
 
@@ -394,6 +400,7 @@ function subscribePlan(){
 }
 function dbErr(){S.noDb=true;render()}
 /* ---------- Stockage Supabase (même interface que la base de la version Claude) ---------- */
+const IMG_COLL='life/images';
 const SB_URL='https://fycpioedjvrxkpkcyijw.supabase.co',SB_KEY='sb_publishable_2oFOAecr-_j8a_6tygHz1A_dhieFDJH';
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}}):null;
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -429,14 +436,14 @@ function makeStore(uid){
   }
   function collRef(coll){return Object.assign(query(coll,[],null,0),{path:coll,doc:id=>docRef(coll,id||genId()),add:async d=>{const r=docRef(coll,genId());await r.set(d);return r}})}
   async function load(){
-    for(let from=0;;from+=1000){const {data,error}=await sb.from('docs').select('coll,id,data').range(from,from+999);if(error)throw error;data.forEach(r=>C(r.coll).set(r.id,r.data));if(data.length<1000)break}
+    for(let from=0;;from+=1000){const {data,error}=await sb.from('docs').select('coll,id,data').neq('coll',IMG_COLL).range(from,from+999);if(error)throw error;data.forEach(r=>C(r.coll).set(r.id,r.data));if(data.length<1000)break}
   }
   // Relit une collection (ou tout) depuis Supabase, au cas où le direct n'a pas transmis un changement.
   async function refresh(coll){
-    let q=sb.from('docs').select('coll,id,data');if(coll)q=q.eq('coll',coll);
+    let q=sb.from('docs').select('coll,id,data');q=coll?q.eq('coll',coll):q.neq('coll',IMG_COLL);
     const {data,error}=await q.range(0,4999);if(error)return;
     const fresh=new Map();data.forEach(r=>{if(!fresh.has(r.coll))fresh.set(r.coll,new Map());fresh.get(r.coll).set(r.id,r.data)});
-    const colls=coll?[coll]:[...new Set([...cache.keys(),...fresh.keys()])];
+    const colls=coll?[coll]:[...new Set([...cache.keys(),...fresh.keys()])].filter(c=>c!==IMG_COLL);
     colls.forEach(c=>{const cur=C(c),nw=fresh.get(c)||new Map();let changed=false;
       cur.forEach((v,id)=>{if(!nw.has(id)){cur.delete(id);changed=true}});
       nw.forEach((v,id)=>{if(JSON.stringify(cur.get(id))!==JSON.stringify(v)){cur.set(id,v);changed=true}});
@@ -444,11 +451,19 @@ function makeStore(uid){
   }
   function subscribe(){
     sb.channel('docs-'+uid).on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
-      const r=p.eventType==='DELETE'?p.old:p.new;if(!r||!r.coll||(r.user_id&&r.user_id!==uid))return;
+      const r=p.eventType==='DELETE'?p.old:p.new;if(!r||!r.coll||r.coll===IMG_COLL||(r.user_id&&r.user_id!==uid))return;
       setLocal(r.coll,r.id,p.eventType==='DELETE'?undefined:r.data);
     }).subscribe();
   }
-  return {load,subscribe,refresh,doc:p=>{const i=p.lastIndexOf('/');return docRef(p.slice(0,i),p.slice(i+1))},collection:collRef,writeRaw:write};
+  // Images des tâches : rangées à part (collection life/images), chargées seulement quand on les affiche.
+  const imgCache=new Map();
+  const images={
+    get:id=>{if(!imgCache.has(id))imgCache.set(id,sb.from('docs').select('data').eq('user_id',uid).eq('coll',IMG_COLL).eq('id',id).maybeSingle()
+      .then(({data,error})=>{if(error||!data){imgCache.delete(id);return null}return data.data&&data.data.src||null}));return imgCache.get(id)},
+    put:async src=>{const id=genId();const {error}=await sb.from('docs').upsert({user_id:uid,coll:IMG_COLL,id,data:{src,created:new Date().toISOString()},updated_at:new Date().toISOString()});if(error)throw error;imgCache.set(id,Promise.resolve(src));return id},
+    del:async id=>{imgCache.delete(id);await sb.from('docs').delete().eq('user_id',uid).eq('coll',IMG_COLL).eq('id',id)}
+  };
+  return {images,load,subscribe,refresh,doc:p=>{const i=p.lastIndexOf('/');return docRef(p.slice(0,i),p.slice(i+1))},collection:collRef,writeRaw:write};
 }
 async function boot(){
   render();
@@ -937,6 +952,27 @@ function othersHtml(catId,selfId){
   const ts=S.tasks.filter(t=>t.catId===catId&&t.id!==selfId&&!(t.type==='once'&&t.done)).sort((a,b)=>(+b.priority||5)-(+a.priority||5)).slice(0,8);
   return ts.length?'<span>Les autres tâches de cette catégorie :</span>'+ts.map(t=>'<div><b>'+esc(t.priority||5)+'</b><span>'+esc(t.title)+'</span></div>').join(''):'<span>Aucune autre tâche dans cette catégorie.</span>';
 }
+/* ---------- Images des tâches ----------
+   Image principale : t.coverId. Images dans la description : une ligne [image:ID] à l'endroit voulu.
+   Les images sont réduites (1280 px max, JPEG) puis rangées dans Supabase, collection life/images. */
+const IMG_RE=/\[image:([A-Za-z0-9]+)\]/g;
+function descText(t){return String(t&&t.desc||'').replace(IMG_RE,'').replace(/\n{3,}/g,'\n\n').trim()}
+function descImgIds(s){return [...String(s||'').matchAll(IMG_RE)].map(m=>m[1])}
+function descHtml(s){
+  const parts=String(s||'').split(/\[image:([A-Za-z0-9]+)\]/);let h='';
+  parts.forEach((p,i)=>{if(i%2)h+='<img class="dimg" data-img="'+esc(p)+'" alt="Image de la description">';else{const txt=p.replace(/^\n+|\n+$/g,'');if(txt.trim())h+='<div class="ai-out">'+esc(txt)+'</div>'}});
+  return h?'<div class="desc-view">'+h+'</div>':'';
+}
+function resizeImage(file,max){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),im=new Image();
+  im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+    const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',0.8))};
+  im.onerror=()=>{URL.revokeObjectURL(url);rej({code:'image'})};im.src=url})}
+async function uploadImage(file){if(!db||!db.images)throw {code:'image'};return db.images.put(await resizeImage(file,1280))}
+// Affiche les images dès qu'elles apparaissent à l'écran (chargées à la demande depuis Supabase).
+function hydrateImgs(){if(!db||!db.images)return;document.querySelectorAll('img[data-img]:not([data-done])').forEach(el=>{el.dataset.done='1';
+  db.images.get(el.dataset.img).then(src=>{if(src)el.src=src;else{const d=document.createElement('div');d.className='small muted';d.textContent='Image introuvable';el.replaceWith(d)}})})}
+new MutationObserver(hydrateImgs).observe(document.documentElement,{childList:true,subtree:true});
+function descPreview(v){return descImgIds(v).length?'<div class="small muted">Aperçu de la description</div>'+descHtml(v):''}
 function taskForm(t,preset){
   const isNew=!t;
   t=t||Object.assign({type:'once',freq:'day',every:1,days:[],monthDay:1,duration:30,effort:2,priority:5,mandatory:false,catIds:[],catId:(S.cats.slice().sort((a,b)=>prio(b)-prio(a))[0]||{}).id},preset||{});
@@ -966,8 +1002,14 @@ function taskForm(t,preset){
   '<div class="compare" id="f-others">'+othersHtml(t.catId,t.id)+'</div>'+
   '<label class="toggle"><input type="checkbox" id="f-mand"'+(t.mandatory?' checked':'')+'> Obligatoire (Life la garde même les jours chargés)</label>'+
   '<label class="toggle"><input type="checkbox" id="f-work"'+(t.atWork?' checked':'')+'> Faisable au travail</label>'+
-  '<label class="f">Description<textarea id="f-desc" maxlength="2000">'+esc(t.desc||'')+'</textarea></label>'+
-  (S.assets?'<div class="f">Image (facultatif)'+(t.imageUrl?'<img class="thumb" src="'+esc(t.imageUrl)+'" alt=""><label class="toggle"><input type="checkbox" id="f-imgdel"> Retirer l’image</label>':'')+'<input type="file" id="f-img" accept="image/*"></div>':'')+
+  '<div class="f">Image principale (en haut de la tâche, facultatif)<input type="hidden" id="f-cover" value="'+esc(t.coverId||'')+'">'+
+    '<div id="f-coverbox">'+(t.coverId?'<img class="cover" data-img="'+esc(t.coverId)+'" alt="Image principale">':'')+'</div>'+
+    '<div class="img-tools"><label class="btn soft" id="f-coverlbl">'+(t.coverId?'Changer l’image':'🖼️ Ajouter une image principale')+'<input type="file" id="f-coverfile" accept="image/*"></label>'+
+    '<button type="button" class="btn soft" data-act="cover-del"'+(t.coverId?'':' hidden')+'>Retirer</button></div></div>'+
+  '<label class="f">Description<textarea id="f-desc" maxlength="4000">'+esc(t.desc||'')+'</textarea></label>'+
+  '<div class="img-tools"><label class="btn soft">📷 Ajouter une image dans le texte<input type="file" id="f-descfile" accept="image/*"></label><span class="small muted" id="f-imgmsg" role="status"></span></div>'+
+  '<p class="small muted">L’image se place à l’endroit du curseur. Dans le texte, la ligne [image:…] marque sa place : tu peux la déplacer ou l’effacer.</p>'+
+  '<div id="f-descprev" class="stack">'+descPreview(t.desc)+'</div>'+
   '<label class="f">Est une sous-tâche de (facultatif)<select id="f-parent"><option value="">Aucune</option>'+parents.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===t.parentId?' selected':'')+'>'+esc(x.title)+'</option>').join('')+'</select></label>'+
   (subs.length?'<div class="small muted">Sous-tâches existantes : '+subs.map(x=>esc(x.title)).join(', ')+'</div>':'')+
   '<label class="f">Ajouter des sous-tâches (une par ligne)<textarea id="f-subs" placeholder="Ex.&#10;Rassembler les justificatifs&#10;Remplir le formulaire"></textarea></label>'+
@@ -979,7 +1021,7 @@ function readTaskForm(){
   const type=pressed('f-type')||'once',catId=v('f-cat');
   const o={title:v('f-title'),catId,catIds:$$('#f-cats [aria-pressed="true"]').map(b=>b.dataset.v).filter(x=>x!==catId),type,
     duration:Math.max(5,+v('f-dur')||30),effort:+v('f-effort')||2,priority:+v('f-prio')||5,mandatory:$('#f-mand').checked,atWork:$('#f-work').checked,
-    desc:v('f-desc'),time:v('f-time')||null,parentId:v('f-parent')||null,moment:v('f-moment')||'auto'};
+    desc:v('f-desc'),coverId:v('f-cover')||null,time:v('f-time')||null,parentId:v('f-parent')||null,moment:v('f-moment')||'auto'};
   if(type==='once'){o.date=v('f-date')||null;o.deadline=v('f-deadline')||null}
   else{o.freq=pressed('f-freq')||'day';o.every=Math.max(1,+v('f-every')||1);o.days=$$('#f-days [aria-pressed="true"]').map(b=>+b.dataset.day);o.monthDay=Math.min(31,Math.max(1,+v('f-mday')||1))}
   return o;
@@ -994,11 +1036,12 @@ function taskDetail(t){
     '<p class="small muted">Étapes, choses à prévoir ou réserver, et quand s’y prendre. Life n’a pas accès à internet : elle t’indique où vérifier horaires et prix.</p>'+
     '<div id="ai-out" class="ai-out"'+(t.assist?'':' hidden')+'>'+esc(t.assist||'')+'</div><div id="ai-steps"></div></div>':'';
   return '<div class="spread"><div class="row">'+chip(c)+extra.map(chip).join('')+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div><button class="icon-btn" data-act="close" aria-label="Fermer">✕</button></div>'+
+  (t.coverId?'<img class="cover" data-img="'+esc(t.coverId)+'" alt="Image de la tâche">':'')+
   '<h2>'+esc(t.title)+'</h2>'+
   (parent?'<div class="small">Sous-tâche de <button class="link" data-act="open" data-id="'+esc(parent.id)+'">'+esc(parent.title)+'</button></div>':'')+
   '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+momentBadge(t)+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
   '<div>'+(t.mandatory?'📌 Obligatoire':'🌤️ Facultative')+(t.atWork?' · faisable au travail':'')+'</div>'+
-  (t.desc?'<div class="ai-out">'+esc(t.desc)+'</div>':'')+(t.imageUrl?'<img class="thumb" src="'+esc(t.imageUrl)+'" alt="Image de la tâche">':'')+'</div>'+
+  descHtml(t.desc)+'</div>'+
   (subs.length?'<div class="stack" style="gap:6px"><h3>Sous-tâches</h3>'+subs.map(x=>'<div class="glass tcard'+(isDone(x,d)?' done':'')+'" data-act="open" data-id="'+esc(x.id)+'"><button class="check'+(isDone(x,d)?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(x.id)+'" data-refresh="'+esc(t.id)+'" aria-label="Cocher">'+(isDone(x,d)?'✓':'')+'</button><div class="body"><div class="t">'+esc(x.title)+'</div><div class="meta">'+esc(recLabel(x))+' · '+fmtDur(x.duration)+'</div></div></div>').join('')+'</div>':'')+
   '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button><button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
 }
@@ -1113,7 +1156,7 @@ async function assist(id,btn){
   const out=$('#ai-out');out.hidden=false;out.textContent='Life réfléchit…';btn.disabled=true;
   const ctl=new AbortController();closeSheet.ctl=ctl;
   const c=catOf(t),p=S.profile||{};
-  const prompt='Tu es Life, une coach de vie bienveillante. Tâche : "'+t.title+'" (catégorie '+c.name+' ; '+recLabel(t)+(t.time?' à '+t.time:'')+' ; durée prévue '+fmtDur(t.duration)+'). Description : '+(t.desc||'aucune')+'. Ville : '+(p.city||'non précisée')+'. Date du jour : '+today()+'.\n'+
+  const prompt='Tu es Life, une coach de vie bienveillante. Tâche : "'+t.title+'" (catégorie '+c.name+' ; '+recLabel(t)+(t.time?' à '+t.time:'')+' ; durée prévue '+fmtDur(t.duration)+'). Description : '+(descText(t)||'aucune')+'. Ville : '+(p.city||'non précisée')+'. Date du jour : '+today()+'.\n'+
     'Aide concrètement, en français, en 120 à 220 mots, avec trois parties titrées sur une ligne seule : "Étapes", "À prévoir" (ce qu’il faut acheter, réserver ou apporter, et quand s’en occuper), "Pour s’y mettre" (une astuce). Listes avec des lignes commençant par "- ". Pas de markdown (pas de **, pas de #). Tu n’as pas accès à internet : n’invente aucun horaire ni prix, indique où les vérifier (site officiel, billetterie, application).';
   try{
     const r=await S.sample(prompt,{signal:ctl.signal,onText:({text})=>{out.textContent=text}});
@@ -1128,7 +1171,7 @@ async function split(id,btn){
   const t=taskById(id);if(!t||!S.sample)return;
   const box=$('#ai-steps');box.innerHTML='<p class="small muted">Life découpe ta tâche…</p>';btn.disabled=true;
   const td=today();
-  const prompt='Tu aides une personne à s’organiser. Découpe la tâche "'+t.title+'" en 3 à 7 étapes progressives, réparties entre le '+td+' et la date limite du '+t.deadline+' (la dernière étape au plus tard la veille si possible). Description : '+(t.desc||'aucune')+'.\n'+
+  const prompt='Tu aides une personne à s’organiser. Découpe la tâche "'+t.title+'" en 3 à 7 étapes progressives, réparties entre le '+td+' et la date limite du '+t.deadline+' (la dernière étape au plus tard la veille si possible). Description : '+(descText(t)||'aucune')+'.\n'+
     'Réponds uniquement avec un tableau JSON d’objets {"title": string court en français, "date": "AAAA-MM-JJ", "minutes": durée entière, "effort": entier de 1 à 5}. Exemple : [{"title":"Rassembler les documents","date":"'+addDays(td,1)+'","minutes":30,"effort":2}]';
   try{
     const arr=await S.sample.json(prompt,{modelTier:'default'});
@@ -1180,6 +1223,7 @@ document.addEventListener('click',async e=>{
   else if(act==='menu'){e.stopPropagation();S.menu=S.menu===id?null:id;render()}
   else if(act==='replace'){S.menu=null;replaceTask(id);render()}
   else if(act==='open'){const t=taskById(id);if(t)openSheet(taskDetail(t))}
+  else if(act==='cover-del'){$('#f-cover').value='';$('#f-coverbox').innerHTML='';$('#f-coverlbl').firstChild.textContent='🖼️ Ajouter une image principale';a.hidden=true}
   else if(act==='edit'){S.menu=null;const t=taskById(id);if(t)openSheet(taskForm(t));render()}
   else if(act==='new')openSheet(taskForm(null,a.dataset.cat?{catId:a.dataset.cat}:null));
   else if(act==='del'){
@@ -1254,9 +1298,25 @@ document.addEventListener('input',e=>{
   if(e.target.id==='f-prio')$('#f-priolabel').textContent=e.target.value+'/10';
   if(e.target.id==='c-prio')$('#c-priolabel').textContent=e.target.value+'/10';
 });
+async function addTaskImage(inp){
+  const file=inp.files[0],msg=$('#f-imgmsg'),cover=inp.id==='f-coverfile',ta=$('#f-desc');
+  const pos=ta?ta.selectionStart:0;inp.value='';
+  if(!/^image\//.test(file.type)){toast('Ce fichier n’est pas une image.');return}
+  if(msg)msg.textContent='Ajout de l’image…';
+  try{
+    const id=await uploadImage(file);if(msg)msg.textContent='';
+    if(cover){$('#f-cover').value=id;$('#f-coverbox').innerHTML='<img class="cover" data-img="'+esc(id)+'" alt="Image principale">';
+      $('#f-coverlbl').firstChild.textContent='Changer l’image';const del=document.querySelector('[data-act="cover-del"]');if(del)del.hidden=false}
+    else{const v=ta.value,before=v.slice(0,pos),after=v.slice(pos);
+      const tag=(before&&!before.endsWith('\n')?'\n':'')+'[image:'+id+']'+(after.startsWith('\n')?'':'\n');
+      ta.value=before+tag+after;const c=before.length+tag.length;ta.focus();ta.setSelectionRange(c,c);$('#f-descprev').innerHTML=descPreview(ta.value)}
+  }catch(err){if(msg)msg.textContent='';toast('L’image n’a pas pu être ajoutée. Réessaie.')}
+}
 document.addEventListener('change',e=>{
   if(e.target.id==='imp-file'&&e.target.files[0])importData(e.target.files[0]);
   if(e.target.id==='f-cat'){const f=$('#task-form');$('#f-others').innerHTML=othersHtml(e.target.value,f.dataset.id)}
+  if(e.target.id==='f-desc'){const pv=$('#f-descprev');if(pv)pv.innerHTML=descPreview(e.target.value)}
+  if((e.target.id==='f-coverfile'||e.target.id==='f-descfile')&&e.target.files[0])addTaskImage(e.target);
 });
 document.addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target;const btn=f.querySelector('[type=submit]');
@@ -1292,18 +1352,17 @@ document.addEventListener('submit',async e=>{
     btn.disabled=true;btn.textContent='Enregistrement…';
     try{
       const id=f.dataset.id,old=id?taskById(id):null;
-      const file=$('#f-img')&&$('#f-img').files[0];
-      if(file&&S.assets){const up=await S.assets.upload(file);o.imageId=up.id;o.imageUrl=up.url}
-      else if($('#f-imgdel')&&$('#f-imgdel').checked){o.imageId=null;o.imageUrl=null}
       if(o.type==='rec'&&!(old&&old.start))o.start=today();
       let tid=id;
       if(id)await tasksRef.doc(id).update(Object.assign({example:false},o));
       else{const ref=tasksRef.doc();tid=ref.id;await ref.set(Object.assign({created:new Date().toISOString()},o))}
       const subs=$('#f-subs').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(0,20);
       for(const s of subs)await tasksRef.doc().set({title:s.slice(0,140),catId:o.catId,catIds:[],type:'once',date:null,deadline:o.deadline||null,duration:20,effort:2,priority:o.priority,mandatory:o.mandatory,atWork:false,desc:'',parentId:tid,time:null,created:new Date().toISOString()});
+      // Images retirées de la tâche : supprimées de Supabase pour ne pas encombrer.
+      if(old){const keep=new Set([o.coverId].concat(descImgIds(o.desc)));[old.coverId].concat(descImgIds(old.desc)).filter(x=>x&&!keep.has(x)).forEach(x=>db.images.del(x).catch(()=>{}))}
       closeSheet();toast(id?'Tâche modifiée.':'Tâche créée.');
       setTimeout(()=>replanToday(true),400);
-    }catch(err){btn.disabled=false;btn.textContent='Réessayer';toast(err&&err.code&&String(err.code).indexOf('image')>=0?'L’image n’a pas pu être ajoutée.':'Pas enregistré. Réessaie.')}
+    }catch(err){btn.disabled=false;btn.textContent='Réessayer';toast('Pas enregistré. Réessaie.')}
   }else if(f.id==='cat-form'){
     const col=document.querySelector('#c-color [aria-pressed="true"]');
     const o={name:$('#c-name').value.trim(),emoji:$('#c-emoji').value.trim()||'✨',desc:$('#c-desc').value.trim(),color:col?col.dataset.v:COLORS[0],priority:+$('#c-prio').value};

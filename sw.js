@@ -1,6 +1,6 @@
 // Garde une copie des fichiers de l'appli pour l'ouvrir même avec une connexion faible.
 // Réseau d'abord, pour toujours avoir la dernière version quand internet est là.
-const CACHE = 'life-v8';
+const CACHE = 'life-v9';
 
 // Notifications envoyées par la fonction Supabase life-push.
 self.addEventListener('push', e => {
