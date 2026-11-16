@@ -1057,10 +1057,14 @@ const isSwimCat=c=>!!c&&(c.id===SWIM_CAT.id||plain(c.name).trim()==='natation');
 const swimCat=()=>S.cats.find(c=>c.id===SWIM_CAT.id)||S.cats.find(isSwimCat)||null;
 const isSwim=t=>!!t&&(!!t.swimSession||(()=>{const c=swimCat();return !!c&&inCat(t,c.id)})());
 let swimCatBusy=false;
-async function ensureSwimCat(){
-  if(swimCatBusy||!catsRef||!S.catsLoaded||!S.profile||!S.profile.onboarded||swimCat())return;
+// Créée une seule fois (repère swimCatCreated dans le profil) : si tu la supprimes, Life ne la recrée pas toute seule.
+// force = ajout de séances demandé : là, on la recrée si besoin.
+async function ensureSwimCat(force){
+  if(swimCatBusy||!catsRef||!S.catsLoaded||!S.profile||!S.profile.onboarded)return;
+  if(swimCat()){if(!S.profile.swimCatCreated){swimCatBusy=true;try{await base.update({swimCatCreated:true})}catch(e){}finally{swimCatBusy=false}}return}
+  if(S.profile.swimCatCreated&&!force)return;
   swimCatBusy=true;
-  try{await catsRef.doc(SWIM_CAT.id).set({name:SWIM_CAT.name,emoji:SWIM_CAT.emoji,color:SWIM_CAT.color,priority:SWIM_CAT.priority,desc:SWIM_CAT.desc,auto:true,created:new Date().toISOString()})}
+  try{if(!S.profile.swimCatCreated)await base.update({swimCatCreated:true});await catsRef.doc(SWIM_CAT.id).set({name:SWIM_CAT.name,emoji:SWIM_CAT.emoji,color:SWIM_CAT.color,priority:SWIM_CAT.priority,desc:SWIM_CAT.desc,auto:true,created:new Date().toISOString()})}
   catch(e){}finally{swimCatBusy=false}
 }
 const SWIM_FEEL=[['ok','Oui, elle me convient'],['ko','Non, elle ne me convient pas'],['hard','Trop difficile'],['easy','Trop facile'],['pain','Douleur ou gêne']];
@@ -1116,7 +1120,7 @@ async function importSwim(btn){
   if(!list||!list.length){msg.textContent='Je n’ai pas trouvé de séance dans ce texte. Vérifie que la réponse de ChatGPT contient bien le bloc JSON (copie la consigne si besoin).';return}
   btn.disabled=true;msg.textContent='Ajout en cours…';
   try{
-    if(!swimCat())await ensureSwimCat();
+    if(!swimCat())await ensureSwimCat(true);
     const cat=swimCat();if(!cat)throw new Error('cat');
     let added=0,skipped=0;
     for(const x of list){
