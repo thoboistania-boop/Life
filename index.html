@@ -10,13 +10,15 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Life">
 <link rel="manifest" href="manifest.webmanifest">
-<script src="planner.js"></script>
 <link rel="apple-touch-icon" href="icon-192.png?v=2">
 <link rel="icon" type="image/png" href="icon-192.png?v=2">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<!-- Les scripts sont chargés en bas de page : l'écran d'ouverture s'affiche tout de suite, sans page blanche. -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap">
+<!-- Polices chargées sans bloquer l'affichage (police système en attendant). -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
 <style>
 /* Layout : une colonne centrée (max 760px), verre dépoli clair sur taches pastel (palette de Tania), barre d'onglets en bas avec Home mis en avant. Mode clair uniquement. */
 :root{
@@ -43,6 +45,19 @@ body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-siz
 .bg i:nth-child(2){width:40vmax;height:40vmax;background:var(--pink);top:8vmax;right:-16vmax}
 .bg i:nth-child(3){width:40vmax;height:40vmax;background:var(--cyan);bottom:-16vmax;left:4vmax}
 .bg i:nth-child(4){width:24vmax;height:24vmax;background:var(--grey);bottom:18vmax;right:8vmax;opacity:.7}
+/* Écran d'ouverture : orbe pastel qui tourne et respire, nom de l'appli, message qui patiente. */
+.splash{min-height:calc(100vh - 170px);min-height:calc(100dvh - 170px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;animation:spIn .6s ease both}
+.sp-orb{position:relative;width:104px;height:104px;animation:spBreath 2.6s ease-in-out infinite}
+.sp-orb i{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,#FFD9A8,#F9BDEF,#A8EEF6,#B8D6FF,#C4EFB8,#FFD9A8);box-shadow:0 12px 44px rgba(43,38,51,.14);animation:spSpin 3.6s linear infinite}
+.sp-orb::after{content:"";position:absolute;inset:20px;border-radius:50%;background:rgba(255,255,255,.82);box-shadow:inset 0 1px 6px rgba(43,38,51,.08)}
+.sp-orb b{position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;font:700 1.25rem/1 "Bricolage Grotesque","Segoe UI",system-ui,sans-serif;color:#2B2633;letter-spacing:-.02em}
+.sp-msg{margin:0;color:#6B6573;font-size:.95rem;font-family:"Instrument Sans","Segoe UI",system-ui,sans-serif}
+.sp-dots b{display:inline-block;animation:spDot 1.2s ease-in-out infinite}
+.sp-dots b:nth-child(2){animation-delay:.15s}.sp-dots b:nth-child(3){animation-delay:.3s}
+@keyframes spSpin{to{transform:rotate(360deg)}}
+@keyframes spBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes spDot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
+@keyframes spIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 #app{position:relative;z-index:1;max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 130px;display:flex;flex-direction:column;gap:18px}
 h1,h2,h3{font-family:var(--f-display);font-weight:700;margin:0;text-wrap:balance;letter-spacing:-.01em}
 h1{font-size:1.9rem;line-height:1.05}
@@ -199,7 +214,7 @@ details summary{cursor:pointer}
 <body>
 
 <div class="bg" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-<main id="app" aria-live="polite"></main>
+<main id="app" aria-live="polite"><div class="splash" role="status"><div class="sp-orb"><i></i><b>Life</b></div><p class="sp-msg">Ta journée se prépare<span class="sp-dots"><b>.</b><b>.</b><b>.</b></span></p></div></main>
 <nav id="nav" class="glass" aria-label="Navigation" hidden>
   <button data-view="tasks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17h6M17 14v6"/></svg>Tâches</button>
   <button data-view="cal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendrier</button>
@@ -211,6 +226,8 @@ details summary{cursor:pointer}
 <div id="toast" role="status" hidden></div>
 <div id="alert" class="alert glass" role="alert" hidden></div>
 
+<script src="planner.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" crossorigin></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -511,7 +528,7 @@ async function migrate(old){
   try{
     const [ns,os]=await Promise.all([base.get(),old.get()]);
     if(ns.exists||!os.exists)return;
-    $('#app').innerHTML='<div class="glass pad empty"><div class="logo"><i></i>Life</div><p class="muted">Déplacement de tes données…</p></div>';
+    $('#app').innerHTML=splashHtml('Déplacement de tes données');
     const moves=[['categories',catsRef],['tasks',tasksRef],['plans',plansRef]];
     const snaps=await Promise.all(moves.map(m=>old.collection(m[0]).get()));
     for(let k=0;k<moves.length;k++)for(const d of snaps[k].docs)await moves[k][1].doc(d.id).set(Object.assign({},d.data()));
@@ -531,6 +548,7 @@ async function loadPast(){
 }
 
 /* ---------- Affichage ---------- */
+const splashHtml=msg=>'<div class="splash" role="status"><div class="sp-orb"><i></i><b>Life</b></div><p class="sp-msg">'+esc(msg)+'<span class="sp-dots"><b>.</b><b>.</b><b>.</b></span></p></div>';
 function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>{t.hidden=true},2800)}
 function chip(c){return '<span class="chip" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+' '+esc(c.name)+'</span>'}
 function recLabel(t){
@@ -546,7 +564,8 @@ function render(){
   const app=$('#app'),nav=$('#nav');
   if(S.noDb){nav.hidden=true;app.innerHTML='<div class="glass pad empty"><div class="logo"><i></i>Life</div><p>Impossible de joindre tes données. Vérifie ta connexion internet puis recharge la page.</p></div>';return}
   if(S.auth){nav.hidden=true;if(!app.querySelector('#auth-form'))app.innerHTML=viewAuth();return}
-  if(!S.profileLoaded||!S.catsLoaded||!S.tasksLoaded){nav.hidden=true;app.innerHTML='<div class="glass pad empty"><div class="logo"><i></i>Life</div><p class="muted">Ta journée se prépare…</p></div>';return}
+  // Écran d'ouverture (déjà présent dans la page) : on le laisse en place pour ne pas relancer l'animation.
+  if(!S.profileLoaded||!S.catsLoaded||!S.tasksLoaded){nav.hidden=true;if(!app.querySelector('.splash'))app.innerHTML=splashHtml('Ta journée se prépare');return}
   if(!S.profile||!S.profile.onboarded){nav.hidden=true;if(!app.querySelector('#onb'))app.innerHTML=viewOnboarding();return}
   nav.hidden=false;
   nav.querySelectorAll('button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===S.view?'page':'false'));

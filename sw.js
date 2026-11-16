@@ -29,12 +29,28 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
+// Fichiers externes à version fixe (bibliothèque Supabase, polices) : copie locale d'abord, ils ne changent jamais.
+const STATIC_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  e.respondWith(
-    fetch(e.request)
-      .then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
-      .catch(() => caches.match(e.request))
-  );
+  if (e.request.method !== 'GET') return;
+  if (STATIC_HOSTS.includes(url.hostname)) {
+    e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request).then(r => {
+      if (r.ok || r.type === 'opaque') { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+      return r;
+    })));
+    return;
+  }
+  if (url.origin !== location.origin) return;
+  // Fichiers de l'appli : réseau d'abord pour avoir la dernière version,
+  // mais si le réseau met plus de 2,5 s, on ouvre la copie locale (la nouvelle version servira la fois suivante).
+  e.respondWith(new Promise(resolve => {
+    let done = false;
+    const net = fetch(e.request)
+      .then(r => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); } return r; });
+    const timer = setTimeout(() => caches.match(e.request).then(hit => { if (hit && !done) { done = true; resolve(hit); } }), 2500);
+    net.then(r => { clearTimeout(timer); if (!done) { done = true; resolve(r); } })
+      .catch(() => { clearTimeout(timer); caches.match(e.request).then(hit => { if (!done) { done = true; resolve(hit || Response.error()); } }); });
+  }));
 });
