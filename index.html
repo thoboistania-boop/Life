@@ -233,7 +233,9 @@ const mondayOf=s=>addDays(s,-((parseYmd(s).getDay()+6)%7));
 const EFFORT=[null,'Très léger','Léger','Moyen','Exigeant','Très exigeant'];
 const OLD_MIN=[null,10,20,45,90,150];
 const PRESETS=[10,15,30,45,60,90,120];
-const COLORS=['#FFECCD','#FCD9F7','#CAFAFF','#E3E2E2','#FFD9C7','#D9F7D2','#E6DDFC','#FFF4B0'];
+const COLORS=['#FFECCD','#FCD9F7','#CAFAFF','#E3E2E2','#FFD9C7','#D9F7D2','#E6DDFC','#FFF4B0','#D3E8FF'];
+// Catégorie Natation : créée automatiquement (identifiant fixe « natation », donc jamais en double).
+const SWIM_CAT={id:'natation',name:'Natation',emoji:'🏊',color:'#D3E8FF',priority:6,desc:'Séances de piscine préparées avec ChatGPT'};
 const DAYS=[[1,'L'],[2,'M'],[3,'M'],[4,'J'],[5,'V'],[6,'S'],[0,'D']];
 const DAYNAMES=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
 const FOCUS=[
@@ -491,9 +493,9 @@ async function startStore(uid){
     if(p&&!S.cleaned&&('cycleOn' in p||'cycleStart' in p||'cycleLen' in p)){
       S.cleaned=true;const c=Object.assign({},p);delete c.cycleOn;delete c.cycleStart;delete c.cycleLen;base.set(c).catch(()=>{});
     }
-    maybeAutoPlan();render();
+    maybeAutoPlan();render();ensureSwimCat();
   },dbErr);
-  catsRef.onSnapshot(s=>{S.cats=s.docs.map(d=>Object.assign({id:d.id},d.data()));S.catsLoaded=true;maybeAutoPlan();render()},dbErr);
+  catsRef.onSnapshot(s=>{S.cats=s.docs.map(d=>Object.assign({id:d.id},d.data()));S.catsLoaded=true;maybeAutoPlan();render();ensureSwimCat()},dbErr);
   tasksRef.onSnapshot(async s=>{
     S.tasks=s.docs.map(d=>norm(Object.assign({id:d.id},d.data())));
     const first=!S.tasksLoaded;S.tasksLoaded=true;
@@ -822,7 +824,7 @@ function overdueCard(){
   return '<div class="glass pad stack"><h3>On fait le point ?</h3>'+late.map(t=>{const ev=isEvent(t),c=catOf(t);
     return '<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:8px"><div class="row"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div style="flex:1;min-width:0"><b>'+esc(t.title)+'</b><div class="small muted">'+(ev?'C’était le '+esc(fmtShort(t.date))+'. Tu y es allée ?':'Prévue le '+esc(fmtShort(t.date))+', pas encore faite.')+'</div></div></div>'+
     '<div class="row">'+(ev?'<button class="btn soft" data-act="odone" data-id="'+esc(t.id)+'">Oui</button><button class="btn soft" data-act="oabandon" data-id="'+esc(t.id)+'">Non, retirer</button>':
-      '<button class="btn soft" data-act="odone" data-id="'+esc(t.id)+'">Fait</button><button class="btn soft" data-act="otoday" data-id="'+esc(t.id)+'">Aujourd’hui</button><button class="btn soft" data-act="oabandon" data-id="'+esc(t.id)+'">Abandonner</button>')+'</div></div>'}).join('')+'</div>';
+      '<button class="btn soft" data-act="odone" data-id="'+esc(t.id)+'">Fait</button><button class="btn soft" data-act="otoday" data-id="'+esc(t.id)+'">Aujourd’hui</button><button class="btn soft" data-act="olater" data-id="'+esc(t.id)+'">Je m’y remets bientôt 💪</button>')+'</div></div>'}).join('')+'</div>';
 }
 // Tâches à heure fixe dont l'heure est passée depuis 15 min : Life demande ce qu'on en fait.
 function lateCard(all,d){
@@ -865,14 +867,15 @@ function viewCat(c){
   const tree=roots.map(t=>listItem(t)+open.filter(x=>x.parentId===t.id).map(x=>listItem(x,true)).join('')).join('');
   return '<div><button class="link" data-act="backcats">‹ Toutes les catégories</button></div>'+
   '<section class="spread"><div class="row"><span class="etile" style="--c:'+esc(c.color)+';width:46px;height:46px;font-size:1.4rem">'+esc(c.emoji)+'</span><div><h1>'+esc(c.name)+'</h1>'+(c.desc?'<p class="muted small">'+esc(c.desc)+'</p>':'')+'</div></div><div><div class="big">'+esc(c.priority)+'</div><div class="small muted">priorité</div></div></section>'+
-  '<div class="row"><button class="btn" data-act="new" data-cat="'+esc(c.id)+'">+ Créer une tâche</button>'+(c.id?'<button class="btn soft" data-act="editcat" data-id="'+esc(c.id)+'">Modifier la catégorie</button>':'')+'</div>'+
+  '<div class="row">'+(isSwimCat(c)?'<button class="btn" data-act="swimadd">🏊 Ajouter des séances (ChatGPT)</button>':'')+'<button class="btn'+(isSwimCat(c)?' soft':'')+'" data-act="new" data-cat="'+esc(c.id)+'">+ Créer une tâche</button>'+(c.id?'<button class="btn soft" data-act="editcat" data-id="'+esc(c.id)+'">Modifier la catégorie</button>':'')+'</div>'+
+  (isSwimCat(c)?'<p class="small muted">ChatGPT prépare tes séances, tu les colles ici, et après chaque séance tu notes ton retour dans la fiche pour le renvoyer à ChatGPT. Le transfert se fait par copier-coller : Life ne communique pas directement avec ChatGPT.</p>':'')+
   '<div class="stack" style="gap:8px">'+(tree||'<div class="glass pad empty"><p class="muted">Aucune tâche en cours dans cette catégorie.</p></div>')+'</div>'+
   (closed.length?'<details><summary class="muted small">Terminées ('+closed.length+')</summary><div class="stack" style="gap:8px;margin-top:8px">'+closed.map(t=>listItem(t)).join('')+'</div></details>':'');
 }
 function listItem(t,isSub){
   const c=catOf(t),subs=S.tasks.filter(x=>x.parentId===t.id).length;
   return '<div class="glass list-item'+(isSub?' sub':'')+'" data-act="open" data-id="'+esc(t.id)+'"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div class="body"><div class="t">'+(isSub?'↳ ':'')+esc(t.title)+(t.type==='once'&&t.done?' ✓':'')+(t.abandoned?' <span class="small muted">(abandonnée)</span>':'')+'</div>'+
-  '<div class="small muted">'+esc(recLabel(t))+(t.time?' · '+esc(t.time):'')+momentBadge(t)+' · '+fmtDur(t.duration)+' · '+esc(EFFORT[t.effort].toLowerCase())+(t.mandatory?' · obligatoire':'')+(subs?' · '+subs+' sous-tâche'+(subs>1?'s':''):'')+'</div></div>'+
+  '<div class="small muted">'+esc(recLabel(t))+(t.time?' · '+esc(t.time):'')+momentBadge(t)+(t.swimSession&&t.swimSession.distance?' · '+esc(t.swimSession.distance)+' m':'')+(t.swimFeedback?' · retour noté':'')+' · '+fmtDur(t.duration)+' · '+esc(EFFORT[t.effort].toLowerCase())+(t.mandatory?' · obligatoire':'')+(subs?' · '+subs+' sous-tâche'+(subs>1?'s':''):'')+'</div></div>'+
   '<div class="big" style="font-size:1rem" title="Priorité">'+esc(t.priority||5)+'</div></div>';
 }
 function viewHistory(){
@@ -1042,8 +1045,163 @@ function taskDetail(t){
   '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+momentBadge(t)+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
   '<div>'+(t.mandatory?'📌 Obligatoire':'🌤️ Facultative')+(t.atWork?' · faisable au travail':'')+'</div>'+
   descHtml(t.desc)+'</div>'+
+  (isSwim(t)?swimSessionHtml(t)+swimFbHtml(t):'')+
   (subs.length?'<div class="stack" style="gap:6px"><h3>Sous-tâches</h3>'+subs.map(x=>'<div class="glass tcard'+(isDone(x,d)?' done':'')+'" data-act="open" data-id="'+esc(x.id)+'"><button class="check'+(isDone(x,d)?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(x.id)+'" data-refresh="'+esc(t.id)+'" aria-label="Cocher">'+(isDone(x,d)?'✓':'')+'</button><div class="body"><div class="t">'+esc(x.title)+'</div><div class="meta">'+esc(recLabel(x))+' · '+fmtDur(x.duration)+'</div></div></div>').join('')+'</div>':'')+
   '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button><button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
+}
+/* ---------- Natation : séances préparées par ChatGPT et retours ----------
+   Une séance est une tâche ponctuelle de la catégorie Natation, avec un champ swimSession (détail prévu).
+   Le retour est rangé dans swimFeedback (dernier retour) et swimFeedbackHistory (tous les retours, 20 max).
+   Le lien avec ChatGPT se fait par copier-coller : aucune clé ni appel externe dans l'appli. */
+const isSwimCat=c=>!!c&&(c.id===SWIM_CAT.id||plain(c.name).trim()==='natation');
+const swimCat=()=>S.cats.find(c=>c.id===SWIM_CAT.id)||S.cats.find(isSwimCat)||null;
+const isSwim=t=>!!t&&(!!t.swimSession||(()=>{const c=swimCat();return !!c&&inCat(t,c.id)})());
+let swimCatBusy=false;
+async function ensureSwimCat(){
+  if(swimCatBusy||!catsRef||!S.catsLoaded||!S.profile||!S.profile.onboarded||swimCat())return;
+  swimCatBusy=true;
+  try{await catsRef.doc(SWIM_CAT.id).set({name:SWIM_CAT.name,emoji:SWIM_CAT.emoji,color:SWIM_CAT.color,priority:SWIM_CAT.priority,desc:SWIM_CAT.desc,auto:true,created:new Date().toISOString()})}
+  catch(e){}finally{swimCatBusy=false}
+}
+const SWIM_FEEL=[['ok','Oui, elle me convient'],['ko','Non, elle ne me convient pas'],['hard','Trop difficile'],['easy','Trop facile'],['pain','Douleur ou gêne']];
+const swimFeelLabel=k=>(SWIM_FEEL.find(f=>f[0]===k)||[,''])[1];
+const SWIM_PARTS=[['warmup','Échauffement'],['main','Corps de séance'],['cooldown','Retour au calme'],['notes','Consignes et adaptations']];
+function swimPrompt(){
+  const ex={sessions:[{title:'Reprise endurance',date:addDays(today(),2),time:'18:30',durationMin:45,distanceM:800,goal:'Endurance et technique',
+    warmup:'200 m nage libre souple\n4 x 25 m éducatifs crawl, 20 s de récupération',main:'4 x 100 m crawl allure confortable, 30 s de récupération\n4 x 25 m jambes avec planche, 30 s de récupération',cooldown:'100 m dos ou brasse très souple',notes:'Si douleur à l’épaule, remplacer le crawl par de la brasse.'}]};
+  return 'Pour mes séances de natation, j’utilise une application de planning qui s’appelle Life. À chaque fois que tu me prépares une ou plusieurs séances, termine ta réponse par un bloc de code JSON à copier, exactement dans ce format (une entrée par séance) :\n\n'+
+    '```json\n'+JSON.stringify(ex,null,2)+'\n```\n\n'+
+    'Règles du bloc : date au format AAAA-MM-JJ ; time facultatif (HH:MM, seulement si je t’ai donné une heure) ; durationMin en minutes et distanceM en mètres, en nombres ; dans warmup, main et cooldown, détaille exercices, distances, répétitions et récupérations, une ligne par exercice (séparées par \\n) ; notes = consignes et adaptations éventuelles.\n'+
+    'Quand je t’envoie un message qui commence par « RETOUR SUR MA SÉANCE DE NATATION », adapte mes prochaines séances en tenant compte de ce retour, puis donne-les avec le même bloc JSON.';
+}
+// Lit la réponse de ChatGPT collée dans Life : un bloc JSON (objet, tableau ou {sessions:[…]}).
+function parseSwimImport(txt){
+  const s=String(txt||'').replace(/```(?:json)?/gi,'');
+  const i=s.search(/[\[{]/);if(i<0)return null;
+  const j=s.lastIndexOf(s[i]==='{'?'}':']');if(j<=i)return null;
+  let raw=s.slice(i,j+1),data=null;
+  try{data=JSON.parse(raw)}catch(e){try{data=JSON.parse(raw.replace(/[“”«»]/g,'"').replace(/[‘’]/g,"'"))}catch(e2){return null}}
+  const listOf=d=>Array.isArray(d)?d:d&&typeof d==='object'?(Array.isArray(d.sessions)?d.sessions:Array.isArray(d.seances)?d.seances:Array.isArray(d['séances'])?d['séances']:[d]):[];
+  return listOf(data).filter(x=>x&&typeof x==='object').map(normSwim).filter(Boolean);
+}
+function normSwim(x){
+  const m={};Object.keys(x).forEach(k=>{m[plain(k).replace(/[^a-z]/g,'')]=x[k]});
+  const pick=(...ks)=>{for(const k of ks)if(m[k]!=null&&m[k]!=='')return m[k];return null};
+  const txt=v=>{if(v==null)return '';if(Array.isArray(v))return v.map(y=>y&&typeof y==='object'?Object.values(y).filter(z=>z!=null&&z!=='').join(' · '):String(y)).join('\n');if(typeof v==='object')return Object.values(v).join(' · ');return String(v)};
+  const num=(v,max)=>{const n=Math.round(parseFloat(String(v==null?'':v).replace(',','.')));return n>0?Math.min(max,n):null};
+  let date=String(pick('date','jour')||'').trim();
+  const fr=date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(fr)date=fr[3]+'-'+pad(fr[2])+'-'+pad(fr[1]);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))date=null;
+  let time=String(pick('time','heure','horaire')||'').trim().replace('h',':');if(/^\d{1,2}:$/.test(time))time+='00';
+  time=/^\d{1,2}:\d{2}$/.test(time)?time.padStart(5,'0'):null;
+  const ses={distance:num(pick('distancem','distance','distancetotale','metres'),20000),duration:num(pick('durationmin','duration','duree','dureemin','dureeestimee'),600),
+    goal:txt(pick('goal','objectif','objective')).slice(0,300),warmup:txt(pick('warmup','echauffement')).slice(0,3000),
+    main:txt(pick('main','mainset','corps','corpsdeseance','body')).slice(0,3000),cooldown:txt(pick('cooldown','retouraucalme','retourcalme')).slice(0,3000),
+    notes:txt(pick('notes','consignes','adaptations','conseils')).slice(0,3000)};
+  const title=txt(pick('title','titre','nom','name')).trim().slice(0,140)||'Séance de natation';
+  if(!date&&!ses.main&&!ses.warmup&&!ses.distance)return null;
+  return {title,date,time,ses};
+}
+function swimImportSheet(){
+  return '<div class="spread"><h2>🏊 Ajouter des séances</h2><button class="icon-btn" data-act="close" aria-label="Fermer">✕</button></div>'+
+  '<div class="stack small" style="gap:4px"><div><b>1.</b> Une seule fois : copie la consigne et colle-la dans ta conversation ChatGPT, pour qu’il réponde dans le bon format.</div>'+
+  '<div><b>2.</b> Quand ChatGPT t’a préparé des séances, copie toute sa réponse et colle-la ci-dessous.</div><div><b>3.</b> Clique sur « Ajouter à Life » : les séances arrivent dans ton calendrier.</div></div>'+
+  '<div><button class="btn soft" data-act="swimprompt">📋 Copier la consigne pour ChatGPT</button></div>'+
+  '<label class="f">Réponse de ChatGPT<textarea id="sw-import" style="min-height:160px" placeholder="Colle ici la réponse de ChatGPT (avec son bloc JSON)"></textarea></label>'+
+  '<div class="row"><button class="btn" data-act="swimimport">Ajouter à Life</button><button class="btn soft" data-act="close">Annuler</button></div>'+
+  '<p id="sw-imp-msg" class="small" role="status"></p><div id="sw-manual"></div>';
+}
+async function importSwim(btn){
+  const msg=$('#sw-imp-msg'),list=parseSwimImport($('#sw-import').value);
+  if(!list||!list.length){msg.textContent='Je n’ai pas trouvé de séance dans ce texte. Vérifie que la réponse de ChatGPT contient bien le bloc JSON (copie la consigne si besoin).';return}
+  btn.disabled=true;msg.textContent='Ajout en cours…';
+  try{
+    if(!swimCat())await ensureSwimCat();
+    const cat=swimCat();if(!cat)throw new Error('cat');
+    let added=0,skipped=0;
+    for(const x of list){
+      const dup=S.tasks.find(t=>t.swimSession&&t.date===x.date&&plain(t.title)===plain(x.title));
+      if(dup){skipped++;continue}
+      await tasksRef.doc().set({title:x.title,catId:cat.id,catIds:[],type:'once',date:x.date,deadline:null,time:x.time,duration:x.ses.duration||45,effort:3,priority:6,
+        mandatory:false,atWork:false,desc:'',parentId:null,moment:'auto',created:new Date().toISOString(),
+        swimSession:Object.assign({},x.ses,{source:'chatgpt',importedAt:new Date().toISOString()})});
+      added++;
+    }
+    closeSheet();
+    toast(added?(added+' séance'+(added>1?'s ajoutées':' ajoutée')+(skipped?' ('+skipped+' déjà présente'+(skipped>1?'s':'')+')':'')+'.'):'Ces séances sont déjà dans Life.');
+    setTimeout(()=>replanToday(true),400);
+  }catch(e){btn.disabled=false;msg.textContent='Pas enregistré. Vérifie ta connexion et réessaie.'}
+}
+const lines=s=>String(s||'').split('\n').map(l=>l.trim()).filter(Boolean);
+function swimSessionHtml(t){
+  const s=t.swimSession;if(!s)return '';
+  const meta=[s.distance?'📏 '+esc(s.distance)+' m':'',s.duration?'⏱️ '+fmtDur(s.duration):'',s.goal?'🎯 '+esc(s.goal):''].filter(Boolean).join(' · ');
+  return '<div class="glass pad stack" style="box-shadow:none"><h3>🏊 Séance prévue</h3>'+(meta?'<div class="small">'+meta+'</div>':'')+
+    SWIM_PARTS.filter(p=>s[p[0]]).map(p=>'<div class="stack" style="gap:4px"><b class="small">'+p[1]+'</b><div class="ai-out">'+esc(s[p[0]])+'</div></div>').join('')+'</div>';
+}
+function swimFbHtml(t){
+  const fb=t.swimFeedback||{},hist=(Array.isArray(t.swimFeedbackHistory)?t.swimFeedbackHistory:[]).slice(0,-1).reverse();
+  const when=a=>a?new Date(a).toLocaleString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}):'';
+  return '<form id="sw-form" class="glass pad stack" style="box-shadow:none" data-id="'+esc(t.id)+'"><h3>📝 Retour sur la séance</h3>'+
+    (t.swimFeedback?'<p class="small muted">Dernier retour enregistré le '+esc(when(fb.at))+'. Tu peux le corriger : l’ancien reste dans l’historique.</p>':'')+
+    '<div class="f">Mon ressenti<div class="seg" id="sw-feel">'+SWIM_FEEL.map(f=>'<button type="button" data-v="'+f[0]+'" aria-pressed="'+(fb.feeling===f[0])+'">'+esc(f[1])+'</button>').join('')+'</div></div>'+
+    '<div class="grid2"><label class="f">Distance réellement parcourue (m)<input type="number" id="sw-dist" min="0" max="20000" step="25" inputmode="numeric" value="'+esc(fb.distance!=null?fb.distance:'')+'"></label>'+
+    '<label class="f">Durée réelle (min)<input type="number" id="sw-dur" min="0" max="600" inputmode="numeric" value="'+esc(fb.duration!=null?fb.duration:'')+'"></label></div>'+
+    '<label class="f">Commentaire<textarea id="sw-comment" maxlength="2000" placeholder="Ce qui a marché ou non : exercice trop dur, pas assez de récupération, respiration, douleur, exercice apprécié…">'+esc(fb.comment||'')+'</textarea></label>'+
+    '<div class="row"><button class="btn" type="submit">Enregistrer mon retour</button>'+(t.swimFeedback?'<button class="btn soft" type="button" data-act="swimcopy" data-id="'+esc(t.id)+'">📋 Copier pour ChatGPT</button>':'')+'</div>'+
+    '<p id="sw-msg" class="small" role="status"></p><div id="sw-manual"></div>'+
+    (hist.length?'<details><summary class="small muted">Retours précédents ('+hist.length+')</summary><div class="stack small" style="gap:6px;margin-top:6px">'+
+      hist.map(h=>'<div><b>'+esc(when(h.at))+'</b> · '+esc(swimFeelLabel(h.feeling))+(h.distance!=null?' · '+esc(h.distance)+' m':'')+(h.duration!=null?' · '+esc(h.duration)+' min':'')+(h.comment?'<br><span class="muted">'+esc(h.comment)+'</span>':'')+'</div>').join('')+'</div></details>':'')+
+    '</form>';
+}
+// Réaffiche toute la fiche (bouton « C'est fait » compris) en gardant l'endroit où on était.
+function refreshSwimFb(t,note){const p=$('#panel');if(!$('#sw-form')||!t)return;const y=p.scrollTop;openSheet(taskDetail(t));p.scrollTop=y;if(note)$('#sw-msg').textContent=note}
+async function saveSwimFb(f,btn){
+  const t=taskById(f.dataset.id),msg=$('#sw-msg');if(!t)return;
+  const b=document.querySelector('#sw-feel [aria-pressed="true"]');
+  if(!b){msg.textContent='Choisis d’abord ton ressenti.';return}
+  const num=(v,max)=>{v=String(v).trim();if(v==='')return null;const n=Math.round(+v);return n>=0?Math.min(max,n):null};
+  const now=new Date().toISOString();
+  const fb={feeling:b.dataset.v,distance:num($('#sw-dist').value,20000),duration:num($('#sw-dur').value,600),comment:$('#sw-comment').value.trim().slice(0,2000),at:now};
+  const hist=(Array.isArray(t.swimFeedbackHistory)?t.swimFeedbackHistory:[]).concat([fb]).slice(-20);
+  const patch={swimFeedback:fb,swimFeedbackHistory:hist};
+  // Un retour = la séance a eu lieu : elle est cochée (une seule fois) et sort du planning des jours suivants.
+  const markDone=t.type==='once'&&!t.done;
+  if(markDone)Object.assign(patch,{done:true,doneAt:now,doneDay:t.date&&t.date<=today()?t.date:today()});
+  btn.disabled=true;msg.textContent='Enregistrement…';
+  try{
+    await tasksRef.doc(t.id).update(patch);
+    refreshSwimFb(taskById(t.id),'✅ Retour enregistré'+(markDone?' et séance cochée':'')+'. Tu peux maintenant le copier pour ChatGPT.');
+    if(markDone)setTimeout(()=>replanToday(true),400);
+  }catch(e){btn.disabled=false;msg.textContent='Pas enregistré. Vérifie ta connexion et réessaie.'}
+}
+function swimReport(t){
+  const s=t.swimSession||{},fb=t.swimFeedback||{};
+  const d=t.date||t.doneDay;
+  const block=(label,v)=>{const ls=lines(v);return ls.length?'- '+label+' :\n'+ls.map(l=>'   '+l.replace(/^[-•]\s*/,'• ')).join('\n'):''};
+  const prev=[s.distance?'- Distance : '+s.distance+' m':'',s.duration||t.duration?'- Durée : '+(s.duration||t.duration)+' min':'',s.goal?'- Objectif : '+s.goal:'',
+    block('Échauffement',s.warmup),block('Corps de séance',s.main),block('Retour au calme',s.cooldown),block('Consignes',s.notes)].filter(Boolean);
+  if(!t.swimSession){const dt=descText(t);if(dt)prev.push(block('Description',dt))}
+  return 'RETOUR SUR MA SÉANCE DE NATATION\n\n'+
+    'Séance : '+t.title+'\nDate : '+(d?parseYmd(d).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'non précisée')+'\n\n'+
+    'Séance prévue :\n'+(prev.join('\n')||'- (détail non renseigné dans Life)')+'\n\n'+
+    'Mon retour :\n- Ressenti : '+(swimFeelLabel(fb.feeling).toLowerCase()||'non renseigné')+'\n'+
+    '- Distance réalisée : '+(fb.distance!=null?fb.distance+' m':'non renseignée')+'\n'+
+    '- Durée réelle : '+(fb.duration!=null?fb.duration+' min':'non renseignée')+'\n'+
+    '- Commentaire : '+(fb.comment||'aucun')+'\n\n'+
+    'Merci d’adapter mes prochaines séances en tenant compte de ce retour, et de les donner avec le bloc JSON pour Life.';
+}
+async function copyText(s){
+  try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(s);return true}}catch(e){}
+  try{const ta=document.createElement('textarea');ta.value=s;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,s.length);
+    const ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}
+}
+// Copie, ou à défaut affiche le texte à sélectionner à la main.
+async function copyOrShow(text,okMsg,msgSel){
+  const ok=await copyText(text),msg=$(msgSel),man=$('#sw-manual');
+  if(ok){if(msg)msg.textContent=okMsg;if(man)man.innerHTML='';toast('Copié dans le presse-papiers.')}
+  else{if(msg)msg.textContent='La copie automatique n’a pas marché sur cet appareil : sélectionne le texte ci-dessous et copie-le.';
+    if(man){man.innerHTML='<textarea readonly style="min-height:200px">'+esc(text)+'</textarea>';const ta=man.querySelector('textarea');ta.focus();ta.select()}}
 }
 function catCompare(selfId){
   const cs=S.cats.filter(c=>c.id!==selfId).sort((a,b)=>prio(b)-prio(a));
@@ -1259,10 +1417,10 @@ document.addEventListener('click',async e=>{
     if(!a.dataset.confirm){a.dataset.confirm='1';a.textContent='Confirmer la suppression';return}
     try{await catsRef.doc(id).delete();closeSheet();S.catPage='list';render();toast('Catégorie supprimée.')}catch(err){toast('Pas supprimée. Réessaie.')}
   }
-  else if(act==='odone'||act==='otoday'||act==='oabandon'){
+  else if(act==='odone'||act==='otoday'||act==='oabandon'||act==='olater'){
     const t=taskById(id);if(!t)return;a.disabled=true;
-    const patch=act==='odone'?{done:true,doneAt:new Date().toISOString(),doneDay:t.date}:act==='otoday'?{date:today()}:{abandoned:true,abandonedAt:new Date().toISOString()};
-    try{await tasksRef.doc(id).update(patch);toast(act==='odone'?'Bien noté.':act==='otoday'?'Ajoutée à aujourd’hui.':'Retirée de ta liste et de ta journée.');setTimeout(()=>replanToday(true),400)}
+    const patch=act==='odone'?{done:true,doneAt:new Date().toISOString(),doneDay:t.date}:act==='otoday'?{date:today()}:act==='olater'?{date:null,postponed:(t.postponed||0)+1,postponedAt:new Date().toISOString()}:{abandoned:true,abandonedAt:new Date().toISOString()};
+    try{await tasksRef.doc(id).update(patch);toast(act==='odone'?'Bien noté.':act==='otoday'?'Ajoutée à aujourd’hui.':act==='olater'?'Pas de souci : Life lui trouve un meilleur moment. Tu vas y arriver !':'Retirée de ta liste et de ta journée.');setTimeout(()=>replanToday(true),400)}
     catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
   }
   else if(act==='lmove'||act==='lskip'){
@@ -1287,6 +1445,10 @@ document.addEventListener('click',async e=>{
   else if(act==='assist')assist(id,a);
   else if(act==='split')split(id,a);
   else if(act==='addsteps')addSteps(a);
+  else if(act==='swimadd')openSheet(swimImportSheet());
+  else if(act==='swimprompt')copyOrShow(swimPrompt(),'✅ Consigne copiée. Colle-la dans ta conversation ChatGPT habituelle.','#sw-imp-msg');
+  else if(act==='swimimport')importSwim(a);
+  else if(act==='swimcopy'){const t=taskById(id);if(t)copyOrShow(swimReport(t),'✅ Copié ! Ouvre ta conversation ChatGPT habituelle et colle le texte pour qu’il adapte tes prochaines séances.','#sw-msg')}
 });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){if(!$('#sheet').hidden)closeSheet();else if(S.menu){S.menu=null;render()}}
@@ -1337,6 +1499,7 @@ document.addEventListener('submit',async e=>{
     btn.disabled=false;return;
   }
   if(f.id==='home-ask'){const v=$('#homeask').value.trim();if(!v)return;$('#homeask').value='';S.view='chat';$('#app').innerHTML='';render();window.scrollTo(0,0);sendChat(v);return}
+  if(f.id==='sw-form'){saveSwimFb(f,btn);return}
   if(f.id==='chat-form'){const inp=$('#chat-in');const v=inp.value.trim();if(!v)return;inp.value='';sendChat(v);return}
   if(f.id==='task-form'){
     const o=readTaskForm();if(!o.title)return;
