@@ -834,7 +834,7 @@ function lateCard(all,d){
     return '<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:8px"><div class="row"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div style="flex:1;min-width:0"><b>'+esc(t.title)+'</b><div class="small late-txt">Prévue à '+esc(t.time)+', il y a '+fmtDur(lateBy(i,d))+'.</div></div></div>'+
     '<div class="row"><button class="btn soft" data-act="toggle" data-id="'+esc(t.id)+'">C’est fait</button>'+
     (t.type==='once'?'<button class="btn soft" data-act="lmove" data-id="'+esc(t.id)+'">Plus tard</button>':'')+
-    '<button class="btn soft" data-act="lskip" data-id="'+esc(t.id)+'">'+(t.type==='once'?'Retirer':'Pas aujourd’hui')+'</button></div></div>'}).join('')+'</div>';
+    '<button class="btn soft" data-act="lskip" data-id="'+esc(t.id)+'">'+(t.type==='once'?'Un autre jour, je m’y remets 💪':'Demain, je m’y remets 💪')+'</button></div></div>'}).join('')+'</div>';
 }
 function marker(m,label){return '<div class="tl marker"><div class="time">'+toHM(m)+'</div><div class="marker-line">'+label+'</div></div>'}
 function taskCard(i,d){
@@ -1431,9 +1431,9 @@ document.addEventListener('click',async e=>{
     const t=taskById(id);if(!t)return;a.disabled=true;
     try{
       if(act==='lmove')await tasksRef.doc(id).update({time:null,timeWas:t.time});
-      else if(t.type==='once')await tasksRef.doc(id).update({abandoned:true,abandonedAt:new Date().toISOString()});
+      else if(t.type==='once')await tasksRef.doc(id).update({time:null,timeWas:t.time,date:null,postponed:(t.postponed||0)+1,postponedAt:new Date().toISOString()});
       else if(S.plan)S.plan=Object.assign({},S.plan,{skipped:(S.plan.skipped||[]).concat(id)});
-      setTimeout(()=>replanToday(true),400);toast(act==='lmove'?'Life la replace plus tard dans ta journée.':t.type==='once'?'Retirée de ta liste et de ta journée.':'Retirée de ta journée.');
+      setTimeout(()=>replanToday(true),400);toast(act==='lmove'?'Life la replace plus tard dans ta journée.':t.type==='once'?'Pas de souci : Life lui trouve un meilleur moment. Tu vas y arriver !':'OK pour aujourd’hui. Demain, c’est reparti !');
     }catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
   }
   else if(act==='pushon')enablePush(a);
