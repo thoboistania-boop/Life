@@ -201,6 +201,22 @@ input,select,textarea{font-size:16px!important}
 .exz-b .num{flex:none;min-width:28px;height:28px;border-radius:14px;background:var(--line);font-size:.9rem;display:inline-flex;align-items:center;justify-content:center}
 .exz-dose{font-weight:600;font-size:1.05rem}
 .exz-close{position:absolute;top:8px;right:8px;background:var(--white);z-index:1}
+/* Étapes à cocher : exercices, étapes de recette, puces de la description, étapes ajoutées */
+.ex{position:relative}
+.ex .scheck{position:absolute;top:6px;right:6px;z-index:1;width:30px;height:30px;border-radius:50%;border:2px solid rgba(43,38,51,.35);background:var(--white);display:grid;place-items:center;font-size:.9rem;font-weight:700;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.ex .scheck.on{background:var(--c,var(--cream));border-color:var(--ink)}
+.ex.done img,.ex.done .b{opacity:.45}
+.ex.done .n{text-decoration:line-through}
+.crow{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;background:none;border:0;padding:6px 2px;font:inherit;color:var(--ink);cursor:pointer}
+.crow .check{width:22px;height:22px;font-size:.75rem}
+.crow .ct{flex:1;min-width:0;overflow-wrap:anywhere;padding-top:1px}
+.crow.on .ct{text-decoration:line-through;color:var(--muted)}
+.steps-box .srow{display:flex;align-items:flex-start;gap:4px}
+.steps-box .srow .crow{flex:1}
+.steps-box .sdel{flex:none;border:0;background:none;color:var(--muted);padding:6px;font-size:.8rem}
+.steps-box form{display:flex;gap:6px}
+.steps-box input{flex:1;min-width:0}
+.prog{font-weight:500;color:var(--muted);font-size:.85rem}
 .ex .q{font-size:.85rem}
 .ex .tip{font-size:.8rem;color:var(--muted)}
 .cover{display:block;width:100%;height:200px;object-fit:cover;border-radius:var(--r-btn);background:var(--line)}
@@ -902,10 +918,11 @@ function taskCard(i,d){
   const t=i.t,c=catOf(t),done=isDone(t,d),late=lateBy(i,d),nm=nowMin();
   const extra=t.catIds.map(id=>S.cats.find(x=>x.id===id)).filter(Boolean).map(x=>esc(x.emoji)).join('');
   const state=late?'<span class="late-txt">· en retard de '+fmtDur(late)+'</span>':!done&&!i.w&&d===today()&&nm>=i.s&&nm<i.e?'<span class="late-txt">· c’est maintenant</span>':'';
+  const sp=stepProgress(t,d),steps=sp?'<span>· ☑️ '+sp.done+'/'+sp.total+'</span>':'';
   return '<div class="glass tcard'+(done?' done':'')+(late?' late':'')+(S.menu===t.id?' menu-open':'')+'" data-act="open" data-id="'+esc(t.id)+'">'+
     '<button class="check'+(done?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(t.id)+'" aria-label="'+(done?'Marquer comme pas faite':'Marquer comme faite')+'">'+(done?'✓':'')+'</button>'+
     '<span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span>'+
-    '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="meta"><span>'+esc(c.name)+(extra?' '+extra:'')+'</span><span>· '+fmtDur(t.duration)+'</span>'+(t.time?'<span>· heure fixe</span>':'')+(momentBadge(t)?'<span>'+momentBadge(t)+'</span>':'')+state+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div></div>'+
+    '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="meta"><span>'+esc(c.name)+(extra?' '+extra:'')+'</span><span>· '+fmtDur(t.duration)+'</span>'+(t.time?'<span>· heure fixe</span>':'')+(momentBadge(t)?'<span>'+momentBadge(t)+'</span>':'')+steps+state+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div></div>'+
     '<button class="icon-btn" data-act="menu" data-id="'+esc(t.id)+'" aria-label="Plus d’actions" aria-expanded="'+(S.menu===t.id)+'">⋯</button>'+
     (S.menu===t.id?'<div class="menu" role="menu"><button role="menuitem" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button>'+(!done&&!t.time?'<button role="menuitem" data-act="replace" data-id="'+esc(t.id)+'">Remplacer par une tâche prévue plus tard</button>':'')+(!done?'<button role="menuitem" data-act="lskip" data-id="'+esc(t.id)+'">'+(t.type==='once'?'Remettre à plus tard':'Pas aujourd’hui')+'</button>'+(t.type==='once'?'<button role="menuitem" data-act="dtomorrow" data-id="'+esc(t.id)+'">Remettre à demain</button>':''):'')+'</div>':'')+'</div>';
 }
@@ -1029,10 +1046,60 @@ function othersHtml(catId,selfId){
 const IMG_RE=/\[image:([A-Za-z0-9]+)\]/g;
 function descText(t){return String(t&&t.desc||'').replace(IMG_RE,'').replace(/\n{3,}/g,'\n\n').trim()}
 function descImgIds(s){return [...String(s||'').matchAll(IMG_RE)].map(m=>m[1])}
-function descHtml(s){
-  const parts=String(s||'').split(/\[image:([A-Za-z0-9]+)\]/);let h='';
-  parts.forEach((p,i)=>{if(i%2)h+='<img class="dimg" data-img="'+esc(p)+'" alt="Image de la description">';else{const txt=p.replace(/^\n+|\n+$/g,'');if(txt.trim())h+='<div class="ai-out">'+esc(txt)+'</div>'}});
+// t donné : les lignes à puces (- • * ou 1.) deviennent des cases à cocher (liste de courses, ingrédients…).
+function descHtml(s,t){
+  const parts=String(s||'').split(/\[image:([A-Za-z0-9]+)\]/);let h='',bi=0;const on=t?ticked(t):null,col=t?esc(catOf(t).color):'';
+  const textHtml=txt=>{if(!t)return '<div class="ai-out">'+esc(txt)+'</div>';
+    let out='',buf=[];const flush=()=>{const b=buf.join('\n').replace(/^\n+|\n+$/g,'');if(b.trim())out+='<div class="ai-out">'+esc(b)+'</div>';buf=[]};
+    txt.split('\n').forEach(l=>{const m=l.match(BULLET_RE);if(!m){buf.push(l);return}flush();out+=checkRow(t,'d'+(bi++),m[1].trim(),on,col)});
+    flush();return out};
+  parts.forEach((p,i)=>{if(i%2)h+='<img class="dimg" data-img="'+esc(p)+'" alt="Image de la description">';else{const txt=p.replace(/^\n+|\n+$/g,'');if(txt.trim())h+=textHtml(txt)}});
   return h?'<div class="desc-view">'+h+'</div>':'';
+}
+/* ---------- Étapes à cocher ----------
+   Ce qui se coche dans une tâche : les exercices d'une séance ou les étapes d'une recette (t.workout, ids w1, w2…),
+   les lignes à puces de la description (d0, d1…) et les étapes ajoutées à la main ou par Claude (t.steps=[{id,title}], ids s<id>).
+   Coché = t.ticks = {clé: [ids]} ; clé 'o' pour une tâche ponctuelle, la date du jour pour une tâche récurrente (on repart de zéro chaque jour). */
+const BULLET_RE=/^\s*(?:[-•*▪◦–]|\d{1,2}[.)])\s+(.+)$/;
+const tickKey=(t,d)=>t.type==='once'?'o':(d||today());
+const ticked=(t,d)=>new Set(((t.ticks||{})[tickKey(t,d)])||[]);
+function descBullets(t){return String(t.desc||'').split('\n').map(l=>{const m=l.match(BULLET_RE);return m?m[1].trim():null}).filter(Boolean)}
+function stepIds(t){
+  const ids=[];let n=0;(t.workout&&t.workout.parts||[]).forEach(p=>(p.items||[]).forEach(()=>ids.push('w'+(++n))));
+  descBullets(t).forEach((x,i)=>ids.push('d'+i));(t.steps||[]).forEach(s=>ids.push('s'+s.id));return ids;
+}
+function stepProgress(t,d){const ids=stepIds(t);if(!ids.length)return null;const on=ticked(t,d);return {done:ids.filter(i=>on.has(i)).length,total:ids.length}}
+function checkRow(t,sid,label,on,col){const ok=on.has(sid);
+  return '<button type="button" class="crow'+(ok?' on':'')+'" data-act="step" data-id="'+esc(t.id)+'" data-s="'+esc(sid)+'" aria-pressed="'+ok+'"><span class="check'+(ok?' on':'')+'" style="--c:'+col+'">'+(ok?'✓':'')+'</span><span class="ct">'+esc(label)+'</span></button>'}
+function stepsHtml(t){
+  const steps=t.steps||[],on=ticked(t),col=esc(catOf(t).color),p=stepProgress(t);
+  return '<div class="glass pad stack steps-box" style="box-shadow:none;gap:4px"><h3>☑️ Étapes'+(p?' <span class="prog">· '+p.done+'/'+p.total+' faite'+(p.done>1?'s':'')+'</span>':'')+'</h3>'+
+    steps.map(s=>'<div class="srow">'+checkRow(t,'s'+s.id,s.title,on,col)+'<button type="button" class="sdel" data-act="stepdel" data-id="'+esc(t.id)+'" data-s="'+esc(s.id)+'" aria-label="Retirer l’étape '+esc(s.title)+'">✕</button></div>').join('')+
+    (!steps.length&&!p?'<p class="small muted">Ajoute les étapes à cocher (exercices, ingrédients, articles de courses…). Astuce : une ligne qui commence par « - » dans la description devient aussi une case à cocher.</p>':'')+
+    '<form id="step-add" data-id="'+esc(t.id)+'"><input id="step-new" placeholder="+ Ajouter une étape" aria-label="Nouvelle étape" autocomplete="off"><button class="btn soft" type="submit">Ajouter</button></form></div>';
+}
+async function saveTicks(t,ticks){t.ticks=ticks;refreshSteps(t.id);try{await tasksRef.doc(t.id).update({ticks})}catch(e){toast('Pas enregistré. Vérifie ta connexion et réessaie.')}}
+async function tickStep(id,sid){
+  const t=taskById(id);if(!t)return;const d=today(),k=tickKey(t,d),ticks=Object.assign({},t.ticks||{});
+  for(const x of Object.keys(ticks))if(x!=='o'&&x<addDays(d,-14))delete ticks[x]; // 2 semaines d'historique suffisent
+  const on=new Set(ticks[k]||[]);if(on.has(sid))on.delete(sid);else on.add(sid);ticks[k]=[...on];
+  const was=stepProgress(t,d);await saveTicks(t,ticks);
+  const p=stepProgress(t,d);if(p&&p.done===p.total&&(!was||was.done<p.total)&&!isDone(t,d))toast('Toutes les étapes sont faites 🎉 Tu peux cocher la tâche.');
+}
+async function addStep(id,title){
+  const t=taskById(id);if(!t||!title)return;const steps=[...(t.steps||[]),{id:Date.now().toString(36),title:title.slice(0,200)}];
+  t.steps=steps;refreshSteps(id,true);try{await tasksRef.doc(id).update({steps})}catch(e){toast('Pas enregistré. Réessaie.')}
+}
+async function delStep(id,sid){
+  const t=taskById(id);if(!t)return;const steps=(t.steps||[]).filter(s=>s.id!==sid);
+  t.steps=steps;refreshSteps(id);try{await tasksRef.doc(id).update({steps})}catch(e){toast('Pas enregistré. Réessaie.')}
+}
+// Redessine la fiche ouverte (et la carte d'exercice en grand) sans perdre la position dans la page.
+function refreshSteps(id,focusNew){
+  const t=taskById(id);if(!t)return;
+  const p=$('#panel');if(!$('#sheet').hidden&&p.querySelector('[data-act="step"][data-id="'+id+'"],#step-add[data-id="'+id+'"]')){const y=p.scrollTop;openSheet(taskDetail(t));p.scrollTop=y;if(focusNew){const i=$('#step-new');if(i)i.focus({preventScroll:true})}}
+  const o=$('#exzoom');if(o&&!o.hidden&&exZoom.cur&&exZoom.cur.id===id)exZoom(id,exZoom.cur.n);
+  render();
 }
 function resizeImage(file,max){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),im=new Image();
   im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
@@ -1135,8 +1202,9 @@ function taskDetail(t){
   (parent?'<div class="small">Sous-tâche de <button class="link" data-act="open" data-id="'+esc(parent.id)+'">'+esc(parent.title)+'</button></div>':'')+
   '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+momentBadge(t)+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
   '<div>'+(t.mandatory?'📌 Obligatoire':'🌤️ Facultative')+(t.atWork?' · faisable au travail':'')+'</div>'+
-  descHtml(t.desc)+'</div>'+
+  descHtml(t.desc,t)+'</div>'+
   (t.workout?workoutHtml(t)+(t.workout.kind==='meal'?'':skipHtml(t)+swimFbHtml(t)):isSwim(t)?swimSessionHtml(t)+skipHtml(t)+swimFbHtml(t):'')+
+  stepsHtml(t)+
   (subs.length?'<div class="stack" style="gap:6px"><h3>Sous-tâches</h3>'+subs.map(x=>'<div class="glass tcard'+(isDone(x,d)?' done':'')+'" data-act="open" data-id="'+esc(x.id)+'"><button class="check'+(isDone(x,d)?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(x.id)+'" data-refresh="'+esc(t.id)+'" aria-label="Cocher">'+(isDone(x,d)?'✓':'')+'</button><div class="body"><div class="t">'+esc(x.title)+'</div><div class="meta">'+esc(recLabel(x))+' · '+fmtDur(x.duration)+'</div></div></div>').join('')+'</div>':'')+
   '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button>'+(!isDone(t,d)&&!t.abandoned?'<button class="btn soft" data-act="lskip" data-id="'+esc(t.id)+'" data-close="1">⏭️ '+(t.type==='once'?'Plus tard':'Pas aujourd’hui')+'</button>'+(t.type==='once'?'<button class="btn soft" data-act="dtomorrow" data-id="'+esc(t.id)+'" data-close="1">📅 Demain</button>':''):'')+'<button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
 }
@@ -1234,12 +1302,14 @@ const lines=s=>String(s||'').split('\n').map(l=>l.trim()).filter(Boolean);
 function workoutHtml(t){
   const w=t.workout;if(!w)return '';
   const meta=[w.distance?'📏 '+esc(w.distance)+' m':'',w.duration?'⏱️ '+fmtDur(w.duration):'',w.goal?'🎯 '+esc(w.goal):''].filter(Boolean).join(' · ');
-  const credits=[];let n=0;
-  const card=x=>{n++;if(x.credit&&!credits.includes(x.credit))credits.push(x.credit);
-    return '<div class="ex" role="button" tabindex="0" data-act="exzoom" data-id="'+esc(t.id)+'" data-n="'+n+'" aria-label="Voir en grand : '+esc(x.name)+'">'+(x.img?'<img loading="lazy" src="'+esc(x.img)+'" alt="'+esc(x.name)+'" onerror="this.remove()">':'')+
+  const credits=[],on=ticked(t),col=esc(catOf(t).color);let n=0,nOn=0;
+  const card=x=>{n++;if(x.credit&&!credits.includes(x.credit))credits.push(x.credit);const ok=on.has('w'+n);if(ok)nOn++;
+    return '<div class="ex'+(ok?' done':'')+'" role="button" tabindex="0" data-act="exzoom" data-id="'+esc(t.id)+'" data-n="'+n+'" aria-label="Voir en grand : '+esc(x.name)+'">'+
+      '<button class="scheck'+(ok?' on':'')+'" style="--c:'+col+'" data-act="step" data-id="'+esc(t.id)+'" data-s="w'+n+'" aria-label="'+(ok?'Pas encore fait : ':'Fait : ')+esc(x.name)+'">'+(ok?'✓':'')+'</button>'+
+      (x.img?'<img loading="lazy" src="'+esc(x.img)+'" alt="'+esc(x.name)+'" onerror="this.remove()">':'')+
       '<div class="b"><div class="n"><span class="num">'+n+'</span>'+esc(x.name)+'</div>'+(x.dose?'<div class="q">'+esc(x.dose)+'</div>':'')+(x.tip?'<div class="tip">'+esc(x.tip)+'</div>':'')+'</div></div>'};
   const parts=(w.parts||[]).map(p=>'<div class="stack" style="gap:6px"><b class="small">'+esc(p.name)+'</b><div class="ex-grid">'+(p.items||[]).map(card).join('')+'</div></div>').join('');
-  return '<div class="glass pad stack" style="box-shadow:none"><h3>'+(w.kind==='meal'?'🍽️ Recette':w.kind==='home'?'🏠 Séance à la maison':'🏊 Séance prévue')+'</h3>'+(meta?'<div class="small">'+meta+'</div>':'')+parts+
+  return '<div class="glass pad stack" style="box-shadow:none"><h3>'+(w.kind==='meal'?'🍽️ Recette':w.kind==='home'?'🏠 Séance à la maison':'🏊 Séance prévue')+(n?' <span class="prog">· '+nOn+'/'+n+' fait'+(nOn>1?'s':'')+'</span>':'')+'</h3>'+(meta?'<div class="small">'+meta+'</div>':'')+parts+
     (w.notes?'<div class="stack" style="gap:4px"><b class="small">'+(w.kind==='meal'?'Bon à savoir':'Consignes')+'</b><div class="ai-out">'+esc(w.notes)+'</div></div>':'')+
     (credits.length?'<p class="small muted">Photos : Wikimedia Commons, licences libres ('+esc(credits.join(', '))+').</p>':'')+'</div>';
 }
@@ -1248,6 +1318,7 @@ function exZoom(id,n){
   const t=taskById(id),w=t&&t.workout;if(!w)return;
   const all=[];(w.parts||[]).forEach(p=>(p.items||[]).forEach(x=>all.push(Object.assign({part:p.name},x))));
   const i=Math.max(0,Math.min(all.length-1,(+n||1)-1)),x=all[i];if(!x)return;
+  exZoom.cur={id,n:i+1};const ok=ticked(t).has('w'+(i+1));
   let o=$('#exzoom');if(!o){o=document.createElement('div');o.id='exzoom';o.className='exzoom';o.addEventListener('click',ev=>{if(ev.target===o)o.hidden=true});document.body.appendChild(o)}
   o.innerHTML='<div class="exz-card" role="dialog" aria-modal="true" aria-label="'+esc(x.name)+'">'+
     '<button class="icon-btn exz-close" data-act="exclose" aria-label="Fermer">✕</button>'+
@@ -1255,6 +1326,7 @@ function exZoom(id,n){
     '<div class="exz-b"><div class="small muted">'+esc(x.part)+'</div><h2><span class="num">'+(i+1)+'</span> '+esc(x.name)+'</h2>'+
     (x.dose?'<div class="exz-dose">'+esc(x.dose)+'</div>':'')+(x.tip?'<p>'+esc(x.tip)+'</p>':'')+
     (x.how?'<div class="ai-out">'+esc(x.how)+'</div>':'')+(x.credit?'<p class="small muted">Photo : '+esc(x.credit)+', Wikimedia Commons</p>':'')+
+    '<button class="btn'+(ok?' soft':'')+'" data-act="step" data-id="'+esc(id)+'" data-s="w'+(i+1)+'">'+(ok?'✓ Fait · décocher':'C’est fait ✓')+'</button>'+
     '<div class="row spread"><button class="btn soft" data-act="exzoom" data-id="'+esc(id)+'" data-n="'+i+'"'+(i?'':' disabled')+'>‹ Précédent</button>'+
     '<span class="small muted">'+(i+1)+' / '+all.length+'</span>'+
     '<button class="btn soft" data-act="exzoom" data-id="'+esc(id)+'" data-n="'+(i+2)+'"'+(i<all.length-1?'':' disabled')+'>Suivant ›</button></div></div></div>';
@@ -1606,6 +1678,8 @@ document.addEventListener('click',async e=>{
   else if(act==='assist')assist(id,a);
   else if(act==='split')split(id,a);
   else if(act==='addsteps')addSteps(a);
+  else if(act==='step'){e.stopPropagation();tickStep(id,a.dataset.s)}
+  else if(act==='stepdel'){e.stopPropagation();if(!a.dataset.confirm){a.dataset.confirm='1';a.textContent='Retirer ?';return}delStep(id,a.dataset.s)}
   else if(act==='exzoom'){e.stopPropagation();exZoom(id,a.dataset.n)}
   else if(act==='exclose'){const o=$('#exzoom');if(o)o.hidden=true}
   else if(act==='wskip')workoutSkip(id,a.dataset.mode,a);
@@ -1649,6 +1723,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target;const btn=f.querySelector('[type=submit]');
+  if(f.id==='step-add'){const i=$('#step-new'),v=i?i.value.trim():'';if(v)addStep(f.dataset.id,v);return}
   if(f.id==='auth-form'){
     const email=$('#a-email').value.trim(),pass=$('#a-pass').value,msg=$('#a-msg');btn.disabled=true;msg.textContent='…';
     try{
