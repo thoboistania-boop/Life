@@ -256,6 +256,52 @@ input,select,textarea{font-size:16px!important}
 #toast{position:fixed;z-index:50;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:var(--r-btn);font-size:.9rem;max-width:calc(100% - 32px)}
 .empty{text-align:center;padding:26px 18px;display:flex;flex-direction:column;gap:10px;align-items:center}
 details summary{cursor:pointer}
+/* ---------- Une mise en page par écran : téléphone (défaut), tablette, ordinateur ---------- */
+.home-row{display:flex;gap:12px;align-items:center}
+.home-row .askbar{flex:1;min-width:0}
+.home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+.home-grid .col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.home-grid .next{grid-template-columns:1fr}
+.mm{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
+.mm span{color:var(--muted);font-weight:600;font-size:.72rem}
+.mm-d{border:0;background:transparent;border-radius:var(--r-btn);padding:6px 0;font:inherit;font-size:.82rem;font-variant-numeric:tabular-nums;color:var(--ink)}
+.mm-d:hover{background:var(--soft)}
+.mm-d.out{color:var(--muted)}
+.mm-d.today{background:var(--ink);color:var(--paper);font-weight:700}
+.chat-panel .chat-log{max-height:calc(100vh - 250px);overflow-y:auto;scrollbar-width:none}
+.chat-panel .chat-log::-webkit-scrollbar{display:none}
+#nav .nav-logo,#nav .nav-new,#nav .nav-cats,#nav .dl{display:none}
+/* Tablette : onglets en barre verticale à gauche, accueil sur deux colonnes */
+:root[data-device="tablet"] body:has(#nav:not([hidden])) #app{max-width:1240px;margin:0;padding:24px 24px 40px calc(132px + env(safe-area-inset-left,0px))}
+:root[data-device="tablet"] #nav{left:calc(16px + env(safe-area-inset-left,0px));top:calc(16px + env(safe-area-inset-top,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:none;width:96px;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:14px 8px;border-radius:16px}
+:root[data-device="tablet"] #nav [data-view]{padding:10px 4px;font-size:.75rem;gap:4px}
+:root[data-device="tablet"] #nav .home{order:-1}
+:root[data-device="tablet"] #nav .home .orb{margin-top:0;width:48px;height:48px}
+:root[data-device="tablet"] #nav [data-view="settings"]{margin-top:auto}
+:root[data-device="tablet"] .chatbar{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+@media (max-width:899px){:root[data-device="tablet"] .home-grid{grid-template-columns:1fr}}
+/* Ordinateur : menu fixe à gauche, accueil sur trois colonnes avec la discussion toujours ouverte */
+:root[data-device="desktop"] body:has(#nav:not([hidden])) #app{max-width:none;margin:0;padding:28px 32px 40px 280px}
+:root[data-device="desktop"] #nav{left:0;top:0;bottom:0;transform:none;width:248px;border-radius:0;border-width:0 1px 0 0;display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:24px 16px;overflow-y:auto;scrollbar-width:none}
+:root[data-device="desktop"] #nav [data-view]{flex-direction:row;justify-content:flex-start;gap:10px;font-size:.92rem;padding:9px 10px}
+:root[data-device="desktop"] #nav [data-view] svg{width:20px;height:20px}
+:root[data-device="desktop"] #nav .home{order:-1}
+:root[data-device="desktop"] #nav .home[aria-current="page"]{background:var(--soft)!important}
+:root[data-device="desktop"] #nav .home .orb{margin:0;width:20px;height:20px;border-width:1px;font-size:0}
+:root[data-device="desktop"] #nav .home .hl{display:none}
+:root[data-device="desktop"] #nav .home .dl{display:inline}
+:root[data-device="desktop"] #nav [data-view="chat"]{display:none}
+:root[data-device="desktop"] #nav .nav-logo{display:flex;order:-3;margin:0 8px 16px}
+:root[data-device="desktop"] #nav .nav-new{display:flex;order:-2;margin-bottom:14px;flex-direction:row;justify-content:center;background:var(--ink);color:var(--paper);font-size:.92rem;padding:11px 10px}
+:root[data-device="desktop"] #nav .nav-cats{display:flex;order:1;flex-direction:column;gap:2px;margin-top:22px}
+#nav .nav-h{font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:0 10px 6px}
+#nav .nav-cat{flex-direction:row;justify-content:flex-start;gap:10px;font-size:.9rem;font-weight:500;color:var(--ink);padding:6px 10px;text-align:left}
+#nav .nav-cat:hover,:root[data-device="desktop"] #nav [data-view]:hover{background:var(--soft)}
+#nav .nav-cat .etile{width:26px;height:26px;font-size:.85rem;flex-shrink:0}
+:root[data-device="desktop"] .home-grid{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(0,1fr)}
+:root[data-device="desktop"] .chat-col{position:sticky;top:28px}
+:root[data-device="desktop"] .chatbar{bottom:16px}
+:root[data-device="desktop"] #sheet .panel{max-width:680px;max-height:86vh}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .wx{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;color:var(--ink)}
 </style>
@@ -272,7 +318,7 @@ document.addEventListener("touchmove",function(ev){if(ev.touches.length>1)ev.pre
 <nav id="nav" class="glass" aria-label="Navigation" hidden>
   <button data-view="tasks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17h6M17 14v6"/></svg>Tâches</button>
   <button data-view="cal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendrier</button>
-  <button data-view="home" class="home" aria-label="Home"><span class="orb">Life</span>Home</button>
+  <button data-view="home" class="home" aria-label="Home"><span class="orb">Life</span><span class="hl">Home</span><span class="dl">Ma journée</span></button>
   <button data-view="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h0A1.5 1.5 0 0 1 4 14.5z"/><path d="M8.5 9h7M8.5 12h4.5"/></svg>Discuter</button>
   <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Réglages</button>
 </nav>
@@ -332,6 +378,12 @@ const RULES={
   guaranteed:{l:'Sauf urgence + une place pour chaque catégorie',d:'Comme ci-dessus, et chaque catégorie a au moins une tâche dans ta journée quand il y en a une à faire.'}
 };
 
+// Quel écran : ordinateur (grand écran + souris), tablette (écran moyen ou grand au doigt), sinon téléphone.
+const DEVQ={desk:matchMedia('(min-width:1100px) and (hover:hover) and (pointer:fine)'),tab:matchMedia('(min-width:700px)')};
+const deviceOf=()=>DEVQ.desk.matches?'desktop':DEVQ.tab.matches?'tablet':'phone';
+let DEVICE=deviceOf();document.documentElement.dataset.device=DEVICE;
+function onDeviceChange(){const d=deviceOf();if(d===DEVICE)return;DEVICE=d;document.documentElement.dataset.device=d;S.menu=null;$('#app').innerHTML='';render()}
+['desk','tab'].forEach(k=>{try{DEVQ[k].addEventListener('change',onDeviceChange)}catch(e){DEVQ[k].addListener(onDeviceChange)}});
 const S={view:'home',profile:null,profileLoaded:false,cats:[],catsLoaded:false,tasks:[],tasksLoaded:false,plan:null,planLoaded:false,
   autoLF:1,rate:null,loadReady:false,planning:false,noDb:false,sample:null,assets:null,
   catPage:'list',catOpen:null,cal:{mode:'week',anchor:today()},past:{},menu:null,fbHidden:false,cleaned:false,
@@ -626,12 +678,16 @@ function render(){
   if(!S.profileLoaded||!S.catsLoaded||!S.tasksLoaded){nav.hidden=true;if(!app.querySelector('.splash'))app.innerHTML=splashHtml('Ta journée se prépare');return}
   if(!S.profile||!S.profile.onboarded){nav.hidden=true;if(!app.querySelector('#onb'))app.innerHTML=viewOnboarding();return}
   nav.hidden=false;
-  nav.querySelectorAll('button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===S.view?'page':'false'));
+  nav.querySelectorAll('button[data-view]').forEach(b=>b.setAttribute('aria-current',b.dataset.view===S.view?'page':'false'));
+  if(!nav.querySelector('.nav-logo'))nav.insertAdjacentHTML('beforeend','<div class="nav-logo logo"><i></i>Life</div><button class="nav-new" data-act="new">+ Créer une tâche</button><div class="nav-cats"></div>');
+  if(DEVICE==='desktop'){const nc=nav.querySelector('.nav-cats'),h='<div class="nav-h">Catégories</div>'+S.cats.filter(isTopCat).sort((a,b)=>prio(b)-prio(a)).map(c=>'<button class="nav-cat" data-act="navcat" data-id="'+esc(c.id)+'"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><span>'+esc(c.name)+'</span></button>').join('');if(nc.innerHTML!==h)nc.innerHTML=h}
   if(S.view==='settings'&&app.querySelector('#settings-form'))return;
   if(S.view==='chat'&&app.querySelector('#chat-form')){renderChatLog(false);return}
-  const ha=$('#homeask'),hv=ha?ha.value:'',hf=ha&&document.activeElement===ha;
+  const ha=$('#homeask'),hv=ha?ha.value:'',hf=ha&&document.activeElement===ha,ci=$('#chat-in'),cv=ci?ci.value:'',cf=ci&&document.activeElement===ci;
   app.innerHTML=S.view==='tasks'?viewTasks():S.view==='cal'?viewCal():S.view==='settings'?viewSettings():S.view==='chat'?viewChat():viewHome();
   const nha=$('#homeask');if(nha&&hv){nha.value=hv}if(nha&&hf)nha.focus();
+  const nci=$('#chat-in');if(nci&&cv)nci.value=cv;if(nci&&cf)nci.focus();
+  if(S.view!=='chat'&&$('#chat-log'))renderChatLog(false);
   if(S.view==='chat')renderChatLog(true);
 }
 
@@ -649,7 +705,8 @@ function chatLogHtml(){
 }
 function renderChatLog(scroll){
   const l=$('#chat-log');if(!l)return;l.innerHTML=chatLogHtml();
-  if(scroll){const f=$('#chat-form');if(f)f.scrollIntoView({block:'end'})}
+  if(S.view!=='chat')l.scrollTop=l.scrollHeight;
+  else if(scroll){const f=$('#chat-form');if(f)f.scrollIntoView({block:'end'})}
   const busy=S.chatBusy,sb=$('#chat-send'),st=$('#chat-stop');if(sb)sb.hidden=busy;if(st)st.hidden=!busy;
 }
 function saveChat(){try{localStorage.setItem('life-chat',JSON.stringify(S.chat.slice(-30).map(m=>({id:m.id||null,role:m.role,content:m.content,actions:m.actions||[]}))))}catch(e){}}
@@ -882,16 +939,36 @@ function viewHome(){
     return '<div class="glass" data-act="day" data-date="'+dd+'"><b style="text-transform:capitalize">'+esc(fmtWd(dd))+(wxDay(dd)?' <span class="small">'+wxShort(dd)+'</span>':'')+'</b><span class="small muted">'+ts.length+' tâche'+(ts.length>1?'s':'')+(mins?' · '+fmtDur(mins):'')+'</span><span class="emos">'+(ts.map(t=>esc(catOf(t).emoji)).join('')||'<span class="muted small">Libre</span>')+'</span></div>'}).join('');
   const banner=p.v!==2?'<div class="glass pad stack"><h3>Nouvelle version de Life</h3><p class="small">Les catégories ont changé (plus d’Études ni de santé). Tu peux repartir de zéro avec le nouveau choix de catégories, ou garder tes données actuelles.</p><div class="row"><button class="btn" data-act="reset">Repartir de zéro</button><button class="btn soft" data-act="keepv2">Garder mes données</button></div></div>':'';
   const fb=total&&done===total&&!S.fbHidden?'<div class="glass pad stack"><h3>Tout est fait 🎉</h3><p class="small">C’était assez pour aujourd’hui ?</p><div class="row"><button class="btn" data-act="more">Ajoute-moi des tâches</button><button class="btn soft" data-act="fbok">C’était parfait</button></div></div>':'';
-  return '<div class="top"><div class="logo"><i></i>Life</div><button class="btn" data-act="new">+ Créer une tâche</button></div>'+
-    '<form id="home-ask" class="askbar glass"><input type="text" id="homeask" placeholder="Demande quelque chose à Life…" maxlength="1000" autocomplete="off" aria-label="Demande à Life"><button class="btn" type="submit" aria-label="Envoyer">→</button></form>'+banner+overdueCard()+lateCard(all,d)+
-    '<div class="glass pad stack"><div class="spread"><b style="text-transform:capitalize">'+esc(fmtDay(d))+'</b><span class="small muted">'+done+' / '+total+' faites</span></div>'+
+  const top='<div class="top"><div class="logo"><i></i>Life</div><button class="btn" data-act="new">+ Créer une tâche</button></div>';
+  const ask='<form id="home-ask" class="askbar glass"><input type="text" id="homeask" placeholder="Demande quelque chose à Life…" maxlength="1000" autocomplete="off" aria-label="Demande à Life"><button class="btn" type="submit" aria-label="Envoyer">→</button></form>';
+  const alerts=banner+overdueCard()+lateCard(all,d);
+  const dayCard='<div class="glass pad stack"><div class="spread"><b style="text-transform:capitalize">'+esc(fmtDay(d))+'</b><span class="small muted">'+done+' / '+total+' faites</span></div>'+
     (wxDay(d)?'<div class="wx">'+WX((S.weather.now||wxDay(d)).code)[0]+' '+(S.weather.now?S.weather.now.t+'° · ':'')+esc(WX(wxDay(d).code)[1])+' · '+wxDay(d).min+'° / '+wxDay(d).max+'°'+(wxDay(d).rain!=null?' · pluie '+wxDay(d).rain+' %':'')+'</div>':'')+'<div class="progress" role="progressbar" aria-valuenow="'+pct+'" aria-valuemin="0" aria-valuemax="100"><b style="width:'+pct+'%"></b></div>'+
     '<div class="spread small muted"><span>'+(S.rate!=null?(loadFactor()>1.02?'Tu gères : Life ajoute un peu.':loadFactor()<0.98?'Life allège ta charge.':'Charge équilibrée.'):'Life apprend ton rythme.')+'</span><span class="row"><button class="link" data-act="lighter">Trop chargée ? Alléger</button><button class="link" data-act="replan">Replanifier</button></span></div></div>'+fb+
-    (S.tasks.length&&!all.filter(i=>!isDone(i.t,d)).length&&!(total&&done===total)?'<div class="glass pad stack"><h3>Ta journée est libre</h3><p class="small">Replanifier avance des tâches prévues plus tard dans ton temps libre.</p><div><button class="btn" data-act="replan">Replanifier</button></div></div>':'')+
-    '<section class="stack" style="gap:10px"><h2>Ma journée</h2>'+
+    (S.tasks.length&&!all.filter(i=>!isDone(i.t,d)).length&&!(total&&done===total)?'<div class="glass pad stack"><h3>Ta journée est libre</h3><p class="small">Replanifier avance des tâches prévues plus tard dans ton temps libre.</p><div><button class="btn" data-act="replan">Replanifier</button></div></div>':'');
+  const journey='<section class="stack" style="gap:10px"><h2>Ma journée</h2>'+
     (S.tasks.length?'':'<div class="glass pad empty"><p>Aucune tâche pour l’instant.</p><button class="btn" data-act="new">Créer ma première tâche</button></div>')+
-    '<div class="timeline">'+entries.map(e=>e.html).join('')+'</div></section>'+
-    '<section class="stack" style="gap:10px"><h2>Les prochains jours</h2><div class="next">'+next+'</div><div><button class="link" data-act="gocal">Voir la vue calendaire</button></div></section>';
+    '<div class="timeline">'+entries.map(e=>e.html).join('')+'</div></section>';
+  const nextSec='<section class="stack" style="gap:10px"><h2>Les prochains jours</h2><div class="next">'+next+'</div><div><button class="link" data-act="gocal">Voir la vue calendaire</button></div></section>';
+  if(DEVICE==='phone')return top+ask+alerts+dayCard+journey+nextSec;
+  if(DEVICE==='tablet')return '<div class="home-row">'+ask+'<button class="btn" data-act="new">+ Créer une tâche</button></div>'+
+    '<div class="home-grid"><div class="col">'+dayCard+journey+'</div><div class="col">'+alerts+nextSec+unplacedSec()+'</div></div>';
+  return '<div class="home-grid"><div class="col">'+dayCard+journey+'</div><div class="col">'+alerts+miniMonth(d)+nextSec+unplacedSec()+'</div>'+
+    '<div class="col chat-col"><section class="glass pad stack chat-panel"><div class="spread"><h2>Discuter avec Life</h2>'+(S.chat.length?'<button class="link" data-act="chatclear">Nouvelle</button>':'')+'</div><div id="chat-log" class="chat-log"></div>'+
+    '<form id="chat-form" class="chatbar"><input type="text" id="chat-in" placeholder="Écris à Life…" autocomplete="off" maxlength="1000" aria-label="Message à Life"><button class="btn" type="submit" id="chat-send">Envoyer</button><button class="btn soft" type="button" data-act="chatstop" id="chat-stop" hidden>Stop</button></form></section></div></div>';
+}
+// Tâches ponctuelles sans jour prévu : Life les glisse dans un trou de la semaine.
+function unplacedSec(){
+  const ts=S.tasks.filter(t=>t.type==='once'&&!t.done&&!t.abandoned&&!t.date&&!t.parentId).sort((a,b)=>String(a.deadline||'9999').localeCompare(String(b.deadline||'9999'))).slice(0,6);
+  if(!ts.length)return '';
+  return '<section class="stack" style="gap:10px"><h2>À placer</h2><p class="small muted" style="margin:0">Sans jour prévu : Life les glisse dans un trou de ta semaine.</p><div class="stack" style="gap:8px">'+ts.map(t=>listItem(t)).join('')+'</div></section>';
+}
+// Petit calendrier du mois (ordinateur) : un clic sur un jour ouvre son planning.
+function miniMonth(d){
+  const a=parseYmd(d),m=a.getMonth(),first=new Date(a.getFullYear(),m,1),start=addDays(ymd(first),-((first.getDay()+6)%7));
+  let cells='';for(let i=0;i<42;i++){const x=addDays(start,i),px=parseYmd(x);if(i>=35&&px.getMonth()!==m)break;
+    cells+='<button class="mm-d'+(px.getMonth()!==m?' out':'')+(x===d?' today':'')+'" data-act="day" data-date="'+x+'" aria-label="'+esc(fmtDay(x))+'">'+px.getDate()+'</button>'}
+  return '<section class="glass pad stack"><div class="spread"><h2 style="text-transform:capitalize">'+esc(a.toLocaleDateString('fr-FR',{month:'long',year:'numeric'}))+'</h2><button class="link" data-act="gocal">Calendrier</button></div><div class="mm">'+['L','M','M','J','V','S','D'].map(x=>'<span>'+x+'</span>').join('')+cells+'</div></section>';
 }
 // Tâches ponctuelles dont la date est passée : Life demande ce qu'on en fait au lieu de les traîner.
 function overdueCard(){
@@ -1581,7 +1658,7 @@ async function addSteps(btn){
 
 /* ---------- Événements ---------- */
 document.addEventListener('click',async e=>{
-  const navb=e.target.closest('#nav button');
+  const navb=e.target.closest('#nav button[data-view]');
   if(navb){S.view=navb.dataset.view;S.menu=null;if(S.view==='tasks')S.catPage='list';$('#app').innerHTML='';render();if(S.view==='cal')loadPast();window.scrollTo(0,0);return}
   if(e.target.id==='sheet'){closeSheet();return}
   if(S.menu&&!e.target.closest('.menu')&&!e.target.closest('[data-act="menu"]')){S.menu=null;render();if(!e.target.closest('[data-act="toggle"]'))return}
@@ -1633,6 +1710,7 @@ document.addEventListener('click',async e=>{
     else{const d=parseYmd(S.cal.anchor);S.cal.anchor=ymd(new Date(d.getFullYear(),d.getMonth()+n,1))}
     render();loadPast()}
   else if(act==='opencat'){S.catPage='cat';S.catOpen=id;render();window.scrollTo(0,0)}
+  else if(act==='navcat'){S.view='tasks';S.catPage='cat';S.catOpen=id;S.menu=null;$('#app').innerHTML='';render();window.scrollTo(0,0)}
   else if(act==='backcats'){S.catPage='list';render()}
   else if(act==='history'){S.catPage='history';render();window.scrollTo(0,0)}
   else if(act==='newcat')openSheet(catForm());
