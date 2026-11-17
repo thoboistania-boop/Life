@@ -113,6 +113,8 @@ button{cursor:pointer}
 .tcard.done{opacity:.72}
 .check{flex:none;width:26px;height:26px;border-radius:50%;border:2px solid rgba(43,38,51,.35);background:var(--white);display:grid;place-items:center;color:var(--ink);font-size:.85rem;font-weight:700}
 .check.on{background:var(--c,var(--cream));border-color:var(--ink)}
+.tcard.menu-open{z-index:40}
+*:has(> .tcard.menu-open){position:relative;z-index:40}
 .menu{position:absolute;right:8px;top:calc(100% - 4px);z-index:5;background:var(--white);border:1px solid var(--line);border-radius:var(--r-btn);box-shadow:var(--shadow);display:flex;flex-direction:column;min-width:220px;overflow:hidden}
 .menu button{border:0;background:none;text-align:left;padding:10px 14px;font-size:.9rem}
 .menu button:hover{background:var(--soft)}
@@ -170,6 +172,14 @@ input[type=range]{width:100%;accent-color:var(--ink)}
 .ai-out{white-space:pre-wrap;background:var(--white);border:1px solid var(--line);border-radius:var(--r-btn);padding:12px 14px;font-size:.92rem;overflow-wrap:anywhere}
 .thumb{max-width:100%;max-height:220px;border-radius:var(--r-btn);object-fit:cover}
 /* Images des tâches : bannière en haut, images pleine largeur dans la description */
+.ex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.ex{background:var(--white);border:1px solid var(--line);border-radius:var(--r-btn);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.ex img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--line)}
+.ex .b{padding:8px 10px;display:flex;flex-direction:column;gap:3px}
+.ex .n{font-weight:600;font-size:.92rem;display:flex;gap:6px;align-items:flex-start}
+.ex .num{flex:none;min-width:20px;height:20px;border-radius:10px;background:var(--line);font-size:.75rem;display:inline-flex;align-items:center;justify-content:center}
+.ex .q{font-size:.85rem}
+.ex .tip{font-size:.8rem;color:var(--muted)}
 .cover{display:block;width:100%;height:200px;object-fit:cover;border-radius:var(--r-btn);background:var(--line)}
 .dimg{display:block;width:100%;height:auto;min-height:60px;border-radius:var(--r-btn);background:var(--line)}
 .desc-view{display:flex;flex-direction:column;gap:10px}
@@ -860,12 +870,12 @@ function taskCard(i,d){
   const t=i.t,c=catOf(t),done=isDone(t,d),late=lateBy(i,d),nm=nowMin();
   const extra=t.catIds.map(id=>S.cats.find(x=>x.id===id)).filter(Boolean).map(x=>esc(x.emoji)).join('');
   const state=late?'<span class="late-txt">· en retard de '+fmtDur(late)+'</span>':!done&&!i.w&&d===today()&&nm>=i.s&&nm<i.e?'<span class="late-txt">· c’est maintenant</span>':'';
-  return '<div class="glass tcard'+(done?' done':'')+(late?' late':'')+'" data-act="open" data-id="'+esc(t.id)+'">'+
+  return '<div class="glass tcard'+(done?' done':'')+(late?' late':'')+(S.menu===t.id?' menu-open':'')+'" data-act="open" data-id="'+esc(t.id)+'">'+
     '<button class="check'+(done?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(t.id)+'" aria-label="'+(done?'Marquer comme pas faite':'Marquer comme faite')+'">'+(done?'✓':'')+'</button>'+
     '<span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span>'+
     '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="meta"><span>'+esc(c.name)+(extra?' '+extra:'')+'</span><span>· '+fmtDur(t.duration)+'</span>'+(t.time?'<span>· heure fixe</span>':'')+(momentBadge(t)?'<span>'+momentBadge(t)+'</span>':'')+state+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div></div>'+
     '<button class="icon-btn" data-act="menu" data-id="'+esc(t.id)+'" aria-label="Plus d’actions" aria-expanded="'+(S.menu===t.id)+'">⋯</button>'+
-    (S.menu===t.id?'<div class="menu" role="menu"><button role="menuitem" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button>'+(!done&&!t.time?'<button role="menuitem" data-act="replace" data-id="'+esc(t.id)+'">Remplacer par une tâche prévue plus tard</button>':'')+'</div>':'')+'</div>';
+    (S.menu===t.id?'<div class="menu" role="menu"><button role="menuitem" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button>'+(!done&&!t.time?'<button role="menuitem" data-act="replace" data-id="'+esc(t.id)+'">Remplacer par une tâche prévue plus tard</button>':'')+(!done?'<button role="menuitem" data-act="lskip" data-id="'+esc(t.id)+'">'+(t.type==='once'?'Remettre à plus tard':'Pas aujourd’hui')+'</button>'+(t.type==='once'?'<button role="menuitem" data-act="dtomorrow" data-id="'+esc(t.id)+'">Remettre à demain</button>':''):'')+'</div>':'')+'</div>';
 }
 
 function viewTasks(){
@@ -882,7 +892,7 @@ function viewTasks(){
 function viewCat(c){
   const ts=S.tasks.filter(t=>c.id?inCat(t,c.id):!S.cats.find(x=>x.id===t.catId));
   const open=ts.filter(t=>!(t.type==='once'&&(t.done||t.abandoned))),closed=ts.filter(t=>t.type==='once'&&(t.done||t.abandoned));
-  const roots=open.filter(t=>!t.parentId||!open.find(x=>x.id===t.parentId)).sort((a,b)=>(+b.priority||5)-(+a.priority||5));
+  const roots=open.filter(t=>!t.parentId||!open.find(x=>x.id===t.parentId)).sort((a,b)=>((+b.priority||5)-(+a.priority||5))||String(a.date||'9999').localeCompare(String(b.date||'9999'))||String(a.time||'99').localeCompare(String(b.time||'99')));
   const tree=roots.map(t=>listItem(t)+open.filter(x=>x.parentId===t.id).map(x=>listItem(x,true)).join('')).join('');
   return '<div><button class="link" data-act="backcats">‹ Toutes les catégories</button></div>'+
   '<section class="spread"><div class="row"><span class="etile" style="--c:'+esc(c.color)+';width:46px;height:46px;font-size:1.4rem">'+esc(c.emoji)+'</span><div><h1>'+esc(c.name)+'</h1>'+(c.desc?'<p class="muted small">'+esc(c.desc)+'</p>':'')+'</div></div><div><div class="big">'+esc(c.priority)+'</div><div class="small muted">priorité</div></div></section>'+
@@ -1058,15 +1068,15 @@ function taskDetail(t){
     '<p class="small muted">Étapes, choses à prévoir ou réserver, et quand s’y prendre. Life n’a pas accès à internet : elle t’indique où vérifier horaires et prix.</p>'+
     '<div id="ai-out" class="ai-out"'+(t.assist?'':' hidden')+'>'+esc(t.assist||'')+'</div><div id="ai-steps"></div></div>':'';
   return '<div class="spread"><div class="row">'+chip(c)+extra.map(chip).join('')+(t.example?'<span class="tag-ex">exemple</span>':'')+'</div><button class="icon-btn" data-act="close" aria-label="Fermer">✕</button></div>'+
-  (t.coverId?'<img class="cover" data-img="'+esc(t.coverId)+'" alt="Image de la tâche">':'')+
+  (t.coverId?'<img class="cover" data-img="'+esc(t.coverId)+'" alt="Image de la tâche">':t.coverUrl?'<img class="cover" loading="lazy" src="'+esc(t.coverUrl)+'" alt="Image de la tâche" onerror="this.remove()">'+(t.coverCredit?'<div class="small muted">Photo : '+esc(t.coverCredit)+', Wikimedia Commons</div>':''):'')+
   '<h2>'+esc(t.title)+'</h2>'+
   (parent?'<div class="small">Sous-tâche de <button class="link" data-act="open" data-id="'+esc(parent.id)+'">'+esc(parent.title)+'</button></div>':'')+
   '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+momentBadge(t)+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
   '<div>'+(t.mandatory?'📌 Obligatoire':'🌤️ Facultative')+(t.atWork?' · faisable au travail':'')+'</div>'+
   descHtml(t.desc)+'</div>'+
-  (isSwim(t)?swimSessionHtml(t)+swimFbHtml(t):'')+
+  (t.workout?workoutHtml(t)+skipHtml(t)+swimFbHtml(t):isSwim(t)?swimSessionHtml(t)+skipHtml(t)+swimFbHtml(t):'')+
   (subs.length?'<div class="stack" style="gap:6px"><h3>Sous-tâches</h3>'+subs.map(x=>'<div class="glass tcard'+(isDone(x,d)?' done':'')+'" data-act="open" data-id="'+esc(x.id)+'"><button class="check'+(isDone(x,d)?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(x.id)+'" data-refresh="'+esc(t.id)+'" aria-label="Cocher">'+(isDone(x,d)?'✓':'')+'</button><div class="body"><div class="t">'+esc(x.title)+'</div><div class="meta">'+esc(recLabel(x))+' · '+fmtDur(x.duration)+'</div></div></div>').join('')+'</div>':'')+
-  '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button><button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
+  '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button>'+(!isDone(t,d)&&!t.abandoned?'<button class="btn soft" data-act="lskip" data-id="'+esc(t.id)+'" data-close="1">⏭️ '+(t.type==='once'?'Plus tard':'Pas aujourd’hui')+'</button>'+(t.type==='once'?'<button class="btn soft" data-act="dtomorrow" data-id="'+esc(t.id)+'" data-close="1">📅 Demain</button>':''):'')+'<button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
 }
 /* ---------- Natation : séances préparées par ChatGPT et retours ----------
    Une séance est une tâche ponctuelle de la catégorie Natation, avec un champ swimSession (détail prévu).
@@ -1156,6 +1166,47 @@ async function importSwim(btn){
   }catch(e){btn.disabled=false;msg.textContent='Pas enregistré. Vérifie ta connexion et réessaie.'}
 }
 const lines=s=>String(s||'').split('\n').map(l=>l.trim()).filter(Boolean);
+/* ---------- Séances détaillées (piscine et maison), préparées par Claude ----------
+   t.workout = {kind:'swim'|'home', goal, distance, duration, notes, parts:[{name, items:[{name, dose, tip, img, credit}]}]}
+   Un encadré par exercice, avec sa photo (Wikimedia Commons, licence libre). */
+function workoutHtml(t){
+  const w=t.workout;if(!w)return '';
+  const meta=[w.distance?'📏 '+esc(w.distance)+' m':'',w.duration?'⏱️ '+fmtDur(w.duration):'',w.goal?'🎯 '+esc(w.goal):''].filter(Boolean).join(' · ');
+  const credits=[];let n=0;
+  const card=x=>{n++;if(x.credit&&!credits.includes(x.credit))credits.push(x.credit);
+    return '<div class="ex">'+(x.img?'<img loading="lazy" src="'+esc(x.img)+'" alt="'+esc(x.name)+'" onerror="this.remove()">':'')+
+      '<div class="b"><div class="n"><span class="num">'+n+'</span>'+esc(x.name)+'</div>'+(x.dose?'<div class="q">'+esc(x.dose)+'</div>':'')+(x.tip?'<div class="tip">'+esc(x.tip)+'</div>':'')+'</div></div>'};
+  const parts=(w.parts||[]).map(p=>'<div class="stack" style="gap:6px"><b class="small">'+esc(p.name)+'</b><div class="ex-grid">'+(p.items||[]).map(card).join('')+'</div></div>').join('');
+  return '<div class="glass pad stack" style="box-shadow:none"><h3>'+(w.kind==='home'?'🏠 Séance à la maison':'🏊 Séance prévue')+'</h3>'+(meta?'<div class="small">'+meta+'</div>':'')+parts+
+    (w.notes?'<div class="stack" style="gap:4px"><b class="small">Consignes</b><div class="ai-out">'+esc(w.notes)+'</div></div>':'')+
+    (credits.length?'<p class="small muted">Photos : Wikimedia Commons, licences libres ('+esc(credits.join(', '))+').</p>':'')+'</div>';
+}
+// Empêchement : remplacer par la séance maison, ou pas de séance du tout.
+function skipHtml(t){
+  if(t.type!=='once')return '';
+  if(t.skipInfo&&t.skipInfo.mode==='home')return '<div class="glass pad stack" style="box-shadow:none"><p class="small">🏠 Remplacée par la séance maison (prévu au départ : '+esc(t.skipInfo.was&&t.skipInfo.was.title||'autre séance')+').</p><div><button class="btn soft" data-act="wunskip" data-id="'+esc(t.id)+'">Revenir à la séance prévue</button></div></div>';
+  if(t.done)return '';
+  const fb=S.profile&&S.profile.homeFallback,isHome=t.workout&&t.workout.kind==='home';
+  return '<div class="glass pad stack" style="box-shadow:none"><h3>🙅 Empêchement ?</h3><p class="small muted">Pas grave. Claude rééquilibre la suite de ta semaine à son prochain passage.</p><div class="row">'+
+    (fb&&!isHome?'<button class="btn soft" data-act="wskip" data-mode="home" data-id="'+esc(t.id)+'">🏠 Séance maison à la place</button>':'')+
+    '<button class="btn soft" data-act="wskip" data-mode="none" data-id="'+esc(t.id)+'">🚫 Pas de séance</button></div></div>';
+}
+async function workoutSkip(id,mode,btn){
+  const t=taskById(id);if(!t)return;btn.disabled=true;const now=new Date().toISOString();
+  const was={title:t.title,catId:t.catId,duration:t.duration,workout:t.workout||null,swimSession:t.swimSession||null};
+  let patch;
+  if(mode==='home'){const fb=S.profile&&S.profile.homeFallback;if(!fb){btn.disabled=false;return}
+    patch={skipInfo:{at:now,mode:'home',was},title:fb.title,workout:fb.workout,duration:fb.duration||25,catId:fb.catId||t.catId,swimSession:null};}
+  else patch={skipInfo:{at:now,mode:'none',was},skipped:true,abandoned:true,abandonedAt:now};
+  try{await tasksRef.doc(id).update(patch);closeSheet();toast(mode==='home'?'C’est noté : séance maison à la place.':'C’est noté : pas de séance. Claude adapte la suite.');setTimeout(()=>replanToday(true),400)}
+  catch(e){btn.disabled=false;toast('Pas enregistré. Réessaie.')}
+}
+async function workoutUnskip(id,btn){
+  const t=taskById(id);if(!t||!t.skipInfo)return;btn.disabled=true;const w=t.skipInfo.was||{};
+  const patch={skipInfo:null,skipped:false,abandoned:false,title:w.title||t.title,catId:w.catId||t.catId,duration:w.duration||t.duration,workout:w.workout||null,swimSession:w.swimSession||null};
+  try{await tasksRef.doc(id).update(patch);closeSheet();toast('Séance prévue remise.');setTimeout(()=>replanToday(true),400)}
+  catch(e){btn.disabled=false;toast('Pas enregistré. Réessaie.')}
+}
 function swimSessionHtml(t){
   const s=t.swimSession;if(!s)return '';
   const meta=[s.distance?'📏 '+esc(s.distance)+' m':'',s.duration?'⏱️ '+fmtDur(s.duration):'',s.goal?'🎯 '+esc(s.goal):''].filter(Boolean).join(' · ');
@@ -1452,8 +1503,15 @@ document.addEventListener('click',async e=>{
       if(act==='lmove')await tasksRef.doc(id).update({time:null,timeWas:t.time});
       else if(t.type==='once')await tasksRef.doc(id).update({time:null,timeWas:t.time,date:null,postponed:(t.postponed||0)+1,postponedAt:new Date().toISOString()});
       else if(S.plan)S.plan=Object.assign({},S.plan,{skipped:(S.plan.skipped||[]).concat(id)});
+      if(a.dataset.close)closeSheet();S.menu=null;
       setTimeout(()=>replanToday(true),400);toast(act==='lmove'?'Life la replace plus tard dans ta journée.':t.type==='once'?'Pas de souci : Life lui trouve un meilleur moment. Tu vas y arriver !':'OK pour aujourd’hui. Demain, c’est reparti !');
     }catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
+  }
+  else if(act==='dtomorrow'){
+    const t=taskById(id);if(!t)return;a.disabled=true;
+    try{await tasksRef.doc(id).update({date:addDays(today(),1),time:null,timeWas:t.time||null,postponed:(t.postponed||0)+1,postponedAt:new Date().toISOString()});
+      if(a.dataset.close)closeSheet();S.menu=null;setTimeout(()=>replanToday(true),400);toast('C’est pour demain. Tu vas y arriver !')}
+    catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
   }
   else if(act==='pushon')enablePush(a);
   else if(act==='pushtest')testPush();
@@ -1468,6 +1526,8 @@ document.addEventListener('click',async e=>{
   else if(act==='assist')assist(id,a);
   else if(act==='split')split(id,a);
   else if(act==='addsteps')addSteps(a);
+  else if(act==='wskip')workoutSkip(id,a.dataset.mode,a);
+  else if(act==='wunskip')workoutUnskip(id,a);
   else if(act==='swimadd')openSheet(swimImportSheet());
   else if(act==='swimprompt')copyOrShow(swimPrompt(),'✅ Consigne copiée. Colle-la dans ta conversation ChatGPT habituelle.','#sw-imp-msg');
   else if(act==='swimimport')importSwim(a);
