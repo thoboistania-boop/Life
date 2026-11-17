@@ -926,9 +926,9 @@ function viewCat(c){
   const ts=S.tasks.filter(t=>c.id?inCatTree(t,c.id):!S.cats.find(x=>x.id===t.catId));
   const kids=c.id?subCats(c.id):[],par=c.parentId?S.cats.find(x=>x.id===c.parentId):null;
   const open=ts.filter(t=>!(t.type==='once'&&(t.done||t.abandoned))),closed=ts.filter(t=>t.type==='once'&&(t.done||t.abandoned));
-  // Dans une catégorie : la date la plus récente en haut, la plus ancienne en bas (même jour : heure la plus tardive en haut). Sans date (récurrentes, à placer) tout en bas, par priorité.
-  const when=t=>t.date?t.date+' '+(t.time||'00:00'):'';
-  const byRecent=(a,b)=>{const x=when(a),y=when(b);if(x&&!y)return -1;if(!x&&y)return 1;return y.localeCompare(x)||((+b.priority||5)-(+a.priority||5))};
+  // Dans une catégorie : dans l'ordre du calendrier, la date la plus proche en haut (même jour : heure la plus tôt en haut). Sans date (récurrentes, à placer) tout en bas, par priorité.
+  const when=t=>t.date?t.date+' '+(t.time||'99:99'):'';
+  const byRecent=(a,b)=>{const x=when(a),y=when(b);if(x&&!y)return -1;if(!x&&y)return 1;return x.localeCompare(y)||((+b.priority||5)-(+a.priority||5))};
   const roots=open.filter(t=>!t.parentId||!open.find(x=>x.id===t.parentId)).sort(byRecent);
   closed.sort((a,b)=>String(b.date||b.doneDay||b.doneAt||'').localeCompare(String(a.date||a.doneDay||a.doneAt||'')));
   const tree=roots.map(t=>listItem(t)+open.filter(x=>x.parentId===t.id).map(x=>listItem(x,true)).join('')).join('');
