@@ -38,8 +38,11 @@
 img{max-width:100%}
 html,body{min-height:100%}
 /* Écran fixe façon appli : pas de zoom (pincer ou double-toucher), petit rebond en haut et en bas, pas de glissement de côté, barre de défilement cachée (on fait toujours défiler au doigt). */
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden;overscroll-behavior-x:none;scrollbar-width:none;touch-action:pan-y}
-body{overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-x:none;scrollbar-width:none;touch-action:pan-y}
+body{overscroll-behavior-x:none;touch-action:pan-y}
+/* Rien ne dépasse sur le côté (les tâches ne glissent plus), et la page est toujours un tout petit peu plus haute que l’écran pour garder le rebond partout. */
+#app{overflow-x:clip;min-height:calc(100vh + 1px);min-height:calc(100dvh + 1px)}
+.tcard,.list-item,.card{max-width:100%;min-width:0}
 html::-webkit-scrollbar,body::-webkit-scrollbar,#sheet .panel::-webkit-scrollbar{display:none;width:0;height:0}
 #sheet .panel{scrollbar-width:none;overscroll-behavior:contain}
 button,a,label,input,select,textarea{touch-action:manipulation}
@@ -1035,7 +1038,7 @@ function taskForm(t,preset){
   const subs=t.id?S.tasks.filter(x=>x.parentId===t.id):[];
   return '<div class="spread"><h2>'+(isNew?'Créer une tâche':'Modifier la tâche')+'</h2><button class="icon-btn" data-act="close" aria-label="Fermer">✕</button></div>'+
   '<form id="task-form" class="stack" data-id="'+esc(t.id||'')+'">'+
-  '<label class="f">Nom<input type="text" id="f-title" required maxlength="140" value="'+esc(t.title||'')+'" placeholder="Ex. Prendre rendez-vous chez le garagiste"></label>'+
+  '<label class="f">Nom<input type="text" id="f-title" required maxlength="140" value="'+esc(t.title||'')+'" placeholder="Ex. Prendre rendez-vous chez le garagiste"></label><p class="small muted" id="f-whenhint" hidden></p>'+
   '<label class="f">Catégorie principale<select id="f-cat">'+cats.map(c=>'<option value="'+esc(c.id)+'"'+(c.id===t.catId?' selected':'')+'>'+esc(c.emoji+' '+c.name)+'</option>').join('')+'</select></label>'+
   (cats.length>1?'<div class="f">Autres catégories (facultatif)<div class="multi" id="f-cats">'+cats.map(c=>'<button type="button" data-v="'+esc(c.id)+'" aria-pressed="'+t.catIds.includes(c.id)+'">'+esc(c.emoji+' '+c.name)+'</button>').join('')+'</div></div>':'')+
   '<div class="f">Type'+seg('f-type',[['once','Ponctuelle'],['rec','Récurrente']],t.type)+'</div>'+
@@ -1068,6 +1071,29 @@ function taskForm(t,preset){
   '<label class="f">Ajouter des sous-tâches (une par ligne)<textarea id="f-subs" placeholder="Ex.&#10;Rassembler les justificatifs&#10;Remplir le formulaire"></textarea></label>'+
   '<div class="row"><button class="btn" type="submit">'+(isNew?'Créer':'Enregistrer')+'</button><button class="btn soft" type="button" data-act="close">Annuler</button></div></form>';
 }
+// Date et heure écrites dans le nom (« demain 14h », « jeudi à 9h30 », « le 20/11 », « 20 novembre 18:00 ») : Life remplit Jour prévu et Heure précise.
+const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function parseWhen(title){
+  const s=' '+String(title||'').toLowerCase().replace(/[’']/g,"'").replace(/\s+/g,' ')+' ';
+  const td=today();let date=null,time=null,m;
+  if((m=s.match(/(?:^|[^\d:/])([01]?\d|2[0-3])\s*(?:h|:)\s*([0-5]\d)?(?![\d/])/)))time=pad(+m[1])+':'+(m[2]||'00');
+  const fix=(d,mo,y)=>{let yr=y?(+y<100?2000+ +y:+y):new Date().getFullYear();const dt=new Date(yr,mo-1,d);if(dt.getMonth()!==mo-1)return null;let r=ymd(dt);if(!y&&r<td)r=ymd(new Date(yr+1,mo-1,d));return r};
+  if(/après[- ]demain/.test(s))date=addDays(td,2);
+  else if(/\bdemain\b/.test(s))date=addDays(td,1);
+  else if(/aujourd'hui|ce soir|ce midi|ce matin|cet après[- ]midi/.test(s))date=td;
+  else if((m=s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/)))date=fix(+m[1],+m[2],m[3]);
+  else if((m=s.match(/(?:^|\s)(1er|\d{1,2})\s+(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)(?:\s+(\d{4}))?/)))date=fix(parseInt(m[1])||1,(MOIS.indexOf(m[2])+1)||({fevrier:2,aout:8,decembre:12}[m[2]]),m[3]);
+  else{const i=DAYNAMES.findIndex(n=>s.includes(' '+n+' ')||s.includes(' '+n+','));if(i>=0){let n=(i-parseYmd(td).getDay()+7)%7;if(n===0)n=7;if(/\b(ce|cette)\s+\S+\s*$/.test(s.split(DAYNAMES[i])[0])&&n===7)n=0;date=addDays(td,n)}}
+  if(time&&!date)date=toMin(time)>nowMin()?td:addDays(td,1);
+  return {date,time};
+}
+function fillWhenFromTitle(){
+  const f=$('#task-form');if(!f)return;const w=parseWhen(v_('f-title'));
+  const set=(id,val)=>{const el=$('#'+id);if(!el)return;if(el.value&&el.dataset.auto!=='1')return;el.value=val||'';el.dataset.auto=val?'1':''};
+  if($('#f-oncewrap')&&!$('#f-oncewrap').hidden)set('f-date',w.date);set('f-time',w.time);
+  const h=$('#f-whenhint');if(h){h.hidden=!(w.date||w.time);h.textContent='Repéré dans le nom : '+(w.date?fmtDay(w.date):'')+(w.date&&w.time?' à ':'')+(w.time||'')+'. Tu peux corriger plus bas.'}
+}
+const v_=id=>{const el=$('#'+id);return el?el.value.trim():''};
 function readTaskForm(){
   const v=id=>{const el=$('#'+id);return el?el.value.trim():''};
   const pressed=id=>{const b=document.querySelector('#'+id+' [aria-pressed="true"]');return b?b.dataset.v:null};
@@ -1076,6 +1102,7 @@ function readTaskForm(){
     duration:Math.max(5,+v('f-dur')||30),effort:+v('f-effort')||2,priority:+v('f-prio')||5,mandatory:$('#f-mand').checked,atWork:$('#f-work').checked,
     desc:v('f-desc'),coverId:v('f-cover')||null,time:v('f-time')||null,parentId:v('f-parent')||null,moment:v('f-moment')||'auto'};
   if(type==='once'){o.date=v('f-date')||null;o.deadline=v('f-deadline')||null}
+  {const w=parseWhen(o.title);if(!o.time&&w.time)o.time=w.time;if(type==='once'&&!o.date&&w.date)o.date=w.date}
   else{o.freq=pressed('f-freq')||'day';o.every=Math.max(1,+v('f-every')||1);o.days=$$('#f-days [aria-pressed="true"]').map(b=>+b.dataset.day);o.monthDay=Math.min(31,Math.max(1,+v('f-mday')||1))}
   return o;
 }
@@ -1560,7 +1587,8 @@ document.addEventListener('keydown',e=>{
   if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('cell')){e.preventDefault();openSheet(daySheet(e.target.dataset.date))}
 });
 document.addEventListener('input',e=>{
-  if(e.target.id==='f-title'){const s=$('#f-moment');if(s&&s.options[0])s.options[0].textContent=autoLabel(e.target.value)}
+  if(e.target.id==='f-title'){const s=$('#f-moment');if(s&&s.options[0])s.options[0].textContent=autoLabel(e.target.value);fillWhenFromTitle()}
+  if(e.target.id==='f-date'||e.target.id==='f-time')e.target.dataset.auto='';
   if(e.target.id==='f-effort')$('#f-efflabel').textContent=EFFORT[+e.target.value];
   if(e.target.id==='f-prio')$('#f-priolabel').textContent=e.target.value+'/10';
   if(e.target.id==='c-prio')$('#c-priolabel').textContent=e.target.value+'/10';
