@@ -133,6 +133,7 @@ button{cursor:pointer}
 .emos{font-size:.95rem;letter-spacing:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 
 /* Listes */
+.list-item.subcat{margin-left:28px}
 .list-item{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;min-width:0}
 .list-item .body{flex:1;min-width:0}
 .list-item .t{font-weight:600;overflow-wrap:anywhere}
@@ -351,6 +352,10 @@ const taskById=id=>S.tasks.find(x=>x.id===id);
 const prio=c=>+c.priority||5;
 const catOf=t=>S.cats.find(c=>c.id===t.catId)||{id:'',name:'Sans catégorie',emoji:'•',color:'#E3E2E2',priority:5};
 const inCat=(t,cid)=>t.catId===cid||t.catIds.includes(cid);
+// Sous-catégories : une catégorie peut avoir une catégorie parente (parentId). La parente montre aussi les tâches de ses sous-catégories.
+const subCats=id=>S.cats.filter(c=>c.parentId&&c.parentId===id);
+const isTopCat=c=>!c.parentId||!S.cats.find(x=>x.id===c.parentId);
+const inCatTree=(t,cid)=>inCat(t,cid)||subCats(cid).some(c=>inCat(t,c.id));
 const dayInfo=date=>P.dayInfo(S.profile,date);
 const isDone=P.isDone;
 const dueOn=(t,date)=>P.dueOn(t,date,today());
@@ -894,23 +899,26 @@ function taskCard(i,d){
 function viewTasks(){
   if(S.catPage==='cat'){const c=S.catOpen===''?{id:'',name:'Sans catégorie',emoji:'•',color:'#E3E2E2',priority:'–'}:S.cats.find(x=>x.id===S.catOpen);if(c)return viewCat(c);S.catPage='list'}
   if(S.catPage==='history')return viewHistory();
-  const cats=S.cats.slice().sort((a,b)=>prio(b)-prio(a));
+  const tops=S.cats.filter(isTopCat).sort((a,b)=>prio(b)-prio(a));
+  const cats=[];tops.forEach(c=>{cats.push(c);subCats(c.id).sort((a,b)=>prio(b)-prio(a)).forEach(x=>cats.push(x))});
   const orphan=S.tasks.filter(t=>!S.cats.find(c=>c.id===t.catId));
   return '<section class="stack" style="gap:6px"><p class="eyebrow">Catégories & Tâches</p><h1>Ma vie, rangée</h1></section>'+
   '<div class="row"><button class="btn" data-act="new">+ Créer une tâche</button><button class="btn soft" data-act="newcat">+ Créer une catégorie</button><button class="btn soft" data-act="history">Historique</button></div>'+
-  '<div class="stack" style="gap:8px">'+(cats.length?'':'<div class="glass pad empty"><p>Aucune catégorie.</p></div>')+cats.map(c=>{const n=S.tasks.filter(t=>inCat(t,c.id)&&!(t.type==='once'&&t.done)).length;
-    return '<div class="glass list-item" data-act="opencat" data-id="'+esc(c.id)+'"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div class="body"><div class="t">'+esc(c.name)+'</div><div class="small muted">'+n+' tâche'+(n>1?'s':'')+' en cours'+(c.desc?' · '+esc(c.desc):'')+'</div></div><div><div class="big">'+esc(c.priority)+'</div><div class="small muted">priorité</div></div></div>'}).join('')+
+  '<div class="stack" style="gap:8px">'+(cats.length?'':'<div class="glass pad empty"><p>Aucune catégorie.</p></div>')+cats.map(c=>{const n=S.tasks.filter(t=>inCatTree(t,c.id)&&!(t.type==='once'&&(t.done||t.abandoned))).length;
+    return '<div class="glass list-item'+(isTopCat(c)?'':' subcat')+'" data-act="opencat" data-id="'+esc(c.id)+'"><span class="etile" style="--c:'+esc(c.color)+'">'+esc(c.emoji)+'</span><div class="body"><div class="t">'+esc(c.name)+'</div><div class="small muted">'+n+' tâche'+(n>1?'s':'')+' en cours'+(c.desc?' · '+esc(c.desc):'')+'</div></div><div><div class="big">'+esc(c.priority)+'</div><div class="small muted">priorité</div></div></div>'}).join('')+
   (orphan.length?'<div class="glass list-item" data-act="opencat" data-id=""><span class="etile">•</span><div class="body"><div class="t">Sans catégorie</div><div class="small muted">'+orphan.length+' tâche(s)</div></div></div>':'')+'</div>';
 }
 function viewCat(c){
-  const ts=S.tasks.filter(t=>c.id?inCat(t,c.id):!S.cats.find(x=>x.id===t.catId));
+  const ts=S.tasks.filter(t=>c.id?inCatTree(t,c.id):!S.cats.find(x=>x.id===t.catId));
+  const kids=c.id?subCats(c.id):[],par=c.parentId?S.cats.find(x=>x.id===c.parentId):null;
   const open=ts.filter(t=>!(t.type==='once'&&(t.done||t.abandoned))),closed=ts.filter(t=>t.type==='once'&&(t.done||t.abandoned));
   const roots=open.filter(t=>!t.parentId||!open.find(x=>x.id===t.parentId)).sort((a,b)=>((+b.priority||5)-(+a.priority||5))||String(a.date||'9999').localeCompare(String(b.date||'9999'))||String(a.time||'99').localeCompare(String(b.time||'99')));
   const tree=roots.map(t=>listItem(t)+open.filter(x=>x.parentId===t.id).map(x=>listItem(x,true)).join('')).join('');
-  return '<div><button class="link" data-act="backcats">‹ Toutes les catégories</button></div>'+
+  return '<div class="row"><button class="link" data-act="backcats">‹ Toutes les catégories</button>'+(par?'<button class="link" data-act="opencat" data-id="'+esc(par.id)+'">‹ '+esc(par.emoji+' '+par.name)+'</button>':'')+'</div>'+
   '<section class="spread"><div class="row"><span class="etile" style="--c:'+esc(c.color)+';width:46px;height:46px;font-size:1.4rem">'+esc(c.emoji)+'</span><div><h1>'+esc(c.name)+'</h1>'+(c.desc?'<p class="muted small">'+esc(c.desc)+'</p>':'')+'</div></div><div><div class="big">'+esc(c.priority)+'</div><div class="small muted">priorité</div></div></section>'+
   '<div class="row">'+'<button class="btn" data-act="new" data-cat="'+esc(c.id)+'">+ Créer une tâche</button>'+(c.id?'<button class="btn soft" data-act="editcat" data-id="'+esc(c.id)+'">Modifier la catégorie</button>':'')+'</div>'+
-  (isSwimCat(c)?'<p class="small muted">ChatGPT prépare tes séances, tu les colles ici, et après chaque séance tu notes ton retour dans la fiche pour le renvoyer à ChatGPT. Le transfert se fait par copier-coller : Life ne communique pas directement avec ChatGPT.</p>':'')+
+  (kids.length?'<div class="row">'+kids.map(k=>'<button class="btn soft" data-act="opencat" data-id="'+esc(k.id)+'">'+esc(k.emoji+' '+k.name)+'</button>').join('')+'</div>':'')+
+  (isSwimCat(c)?'<p class="small muted">Claude prépare tes séances et les ajuste d’après le ressenti que tu notes après chaque séance.</p>':'')+
   '<div class="stack" style="gap:8px">'+(tree||'<div class="glass pad empty"><p class="muted">Aucune tâche en cours dans cette catégorie.</p></div>')+'</div>'+
   (closed.length?'<details><summary class="muted small">Terminées ('+closed.length+')</summary><div class="stack" style="gap:8px;margin-top:8px">'+closed.map(t=>listItem(t)).join('')+'</div></details>':'');
 }
@@ -1300,6 +1308,7 @@ function catForm(c){
   '<form id="cat-form" class="stack" data-id="'+esc(c.id||'')+'">'+
   '<div class="grid2"><label class="f">Nom<input type="text" id="c-name" required maxlength="40" value="'+esc(c.name)+'"></label><label class="f">Emoji<input type="text" id="c-emoji" maxlength="4" value="'+esc(c.emoji)+'"></label></div>'+
   '<label class="f">Description<textarea id="c-desc" maxlength="300">'+esc(c.desc||'')+'</textarea></label>'+
+  (c.id&&subCats(c.id).length?'':'<label class="f">Sous-catégorie de<select id="c-parent"><option value="">Aucune (catégorie principale)</option>'+S.cats.filter(x=>x.id!==c.id&&isTopCat(x)).map(x=>'<option value="'+esc(x.id)+'"'+(c.parentId===x.id?' selected':'')+'>'+esc(x.emoji+' '+x.name)+'</option>').join('')+'</select></label>')+
   '<div class="f">Couleur<div class="swatches" id="c-color">'+COLORS.map(x=>'<button type="button" style="--c:'+x+'" data-v="'+x+'" aria-label="Couleur '+x+'" aria-pressed="'+(x===c.color)+'"></button>').join('')+'</div></div>'+
   '<label class="f">Priorité : <span id="c-priolabel">'+esc(c.priority)+'/10</span><input type="range" id="c-prio" min="1" max="10" value="'+esc(c.priority)+'"></label>'+
   '<div class="compare">'+catCompare(c.id)+'</div>'+
@@ -1625,6 +1634,7 @@ document.addEventListener('submit',async e=>{
   }else if(f.id==='cat-form'){
     const col=document.querySelector('#c-color [aria-pressed="true"]');
     const o={name:$('#c-name').value.trim(),emoji:$('#c-emoji').value.trim()||'✨',desc:$('#c-desc').value.trim(),color:col?col.dataset.v:COLORS[0],priority:+$('#c-prio').value};
+    if($('#c-parent'))o.parentId=$('#c-parent').value||null;
     if(!o.name)return;btn.disabled=true;
     try{const id=f.dataset.id;if(id)await catsRef.doc(id).update(o);else await catsRef.doc().set(o);closeSheet();toast('Catégorie enregistrée.');setTimeout(()=>replanToday(true),300)}
     catch(err){btn.disabled=false;toast('Pas enregistré. Réessaie.')}
