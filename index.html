@@ -909,7 +909,7 @@ function viewCat(c){
   const tree=roots.map(t=>listItem(t)+open.filter(x=>x.parentId===t.id).map(x=>listItem(x,true)).join('')).join('');
   return '<div><button class="link" data-act="backcats">‹ Toutes les catégories</button></div>'+
   '<section class="spread"><div class="row"><span class="etile" style="--c:'+esc(c.color)+';width:46px;height:46px;font-size:1.4rem">'+esc(c.emoji)+'</span><div><h1>'+esc(c.name)+'</h1>'+(c.desc?'<p class="muted small">'+esc(c.desc)+'</p>':'')+'</div></div><div><div class="big">'+esc(c.priority)+'</div><div class="small muted">priorité</div></div></section>'+
-  '<div class="row">'+(isSwimCat(c)?'<button class="btn" data-act="swimadd">🏊 Ajouter des séances (ChatGPT)</button>':'')+'<button class="btn'+(isSwimCat(c)?' soft':'')+'" data-act="new" data-cat="'+esc(c.id)+'">+ Créer une tâche</button>'+(c.id?'<button class="btn soft" data-act="editcat" data-id="'+esc(c.id)+'">Modifier la catégorie</button>':'')+'</div>'+
+  '<div class="row">'+'<button class="btn" data-act="new" data-cat="'+esc(c.id)+'">+ Créer une tâche</button>'+(c.id?'<button class="btn soft" data-act="editcat" data-id="'+esc(c.id)+'">Modifier la catégorie</button>':'')+'</div>'+
   (isSwimCat(c)?'<p class="small muted">ChatGPT prépare tes séances, tu les colles ici, et après chaque séance tu notes ton retour dans la fiche pour le renvoyer à ChatGPT. Le transfert se fait par copier-coller : Life ne communique pas directement avec ChatGPT.</p>':'')+
   '<div class="stack" style="gap:8px">'+(tree||'<div class="glass pad empty"><p class="muted">Aucune tâche en cours dans cette catégorie.</p></div>')+'</div>'+
   (closed.length?'<details><summary class="muted small">Terminées ('+closed.length+')</summary><div class="stack" style="gap:8px;margin-top:8px">'+closed.map(t=>listItem(t)).join('')+'</div></details>':'');
@@ -1235,7 +1235,7 @@ function swimFbHtml(t){
     '<div class="grid2"><label class="f">Distance réellement parcourue (m)<input type="number" id="sw-dist" min="0" max="20000" step="25" inputmode="numeric" value="'+esc(fb.distance!=null?fb.distance:'')+'"></label>'+
     '<label class="f">Durée réelle (min)<input type="number" id="sw-dur" min="0" max="600" inputmode="numeric" value="'+esc(fb.duration!=null?fb.duration:'')+'"></label></div>'+
     '<label class="f">Commentaire<textarea id="sw-comment" maxlength="2000" placeholder="Ce qui a marché ou non : exercice trop dur, pas assez de récupération, respiration, douleur, exercice apprécié…">'+esc(fb.comment||'')+'</textarea></label>'+
-    '<div class="row"><button class="btn" type="submit">Enregistrer mon retour</button>'+(t.swimFeedback?'<button class="btn soft" type="button" data-act="swimcopy" data-id="'+esc(t.id)+'">📋 Copier pour ChatGPT</button>':'')+'</div>'+
+    '<div class="row"><button class="btn" type="submit">Enregistrer mon retour</button>'+'</div>'+
     '<p id="sw-msg" class="small" role="status"></p><div id="sw-manual"></div>'+
     (hist.length?'<details><summary class="small muted">Retours précédents ('+hist.length+')</summary><div class="stack small" style="gap:6px;margin-top:6px">'+
       hist.map(h=>'<div><b>'+esc(when(h.at))+'</b> · '+esc(swimFeelLabel(h.feeling))+(h.distance!=null?' · '+esc(h.distance)+' m':'')+(h.duration!=null?' · '+esc(h.duration)+' min':'')+(h.comment?'<br><span class="muted">'+esc(h.comment)+'</span>':'')+'</div>').join('')+'</div></details>':'')+
@@ -1258,7 +1258,7 @@ async function saveSwimFb(f,btn){
   btn.disabled=true;msg.textContent='Enregistrement…';
   try{
     await tasksRef.doc(t.id).update(patch);
-    refreshSwimFb(taskById(t.id),'✅ Retour enregistré'+(markDone?' et séance cochée':'')+'. Tu peux maintenant le copier pour ChatGPT.');
+    refreshSwimFb(taskById(t.id),'✅ Retour enregistré'+(markDone?' et séance cochée':'')+'. Claude en tiendra compte pour la suite.');
     if(markDone)setTimeout(()=>replanToday(true),400);
   }catch(e){btn.disabled=false;msg.textContent='Pas enregistré. Vérifie ta connexion et réessaie.'}
 }
