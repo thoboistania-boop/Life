@@ -1053,7 +1053,7 @@ function taskForm(t,preset){
   const subs=t.id?S.tasks.filter(x=>x.parentId===t.id):[];
   return '<div class="spread"><h2>'+(isNew?'Créer une tâche':'Modifier la tâche')+'</h2><button class="icon-btn" data-act="close" aria-label="Fermer">✕</button></div>'+
   '<form id="task-form" class="stack" data-id="'+esc(t.id||'')+'">'+
-  '<label class="f">Nom<input type="text" id="f-title" required maxlength="140" value="'+esc(t.title||'')+'" placeholder="Ex. Prendre rendez-vous chez le garagiste"></label><p class="small muted" id="f-whenhint" hidden></p>'+
+  '<label class="f">Nom<input type="text" id="f-title" required maxlength="140" value="'+esc(t.title||'')+'" placeholder="Ex. Prendre rendez-vous chez le garagiste"></label>'+
   '<label class="f">Catégorie principale<select id="f-cat">'+cats.map(c=>'<option value="'+esc(c.id)+'"'+(c.id===t.catId?' selected':'')+'>'+esc(c.emoji+' '+c.name)+'</option>').join('')+'</select></label>'+
   (cats.length>1?'<div class="f">Autres catégories (facultatif)<div class="multi" id="f-cats">'+cats.map(c=>'<button type="button" data-v="'+esc(c.id)+'" aria-pressed="'+t.catIds.includes(c.id)+'">'+esc(c.emoji+' '+c.name)+'</button>').join('')+'</div></div>':'')+
   '<div class="f">Type'+seg('f-type',[['once','Ponctuelle'],['rec','Récurrente']],t.type)+'</div>'+
@@ -1106,7 +1106,6 @@ function fillWhenFromTitle(){
   const f=$('#task-form');if(!f)return;const w=parseWhen(v_('f-title'));
   const set=(id,val)=>{const el=$('#'+id);if(!el)return;if(el.value&&el.dataset.auto!=='1')return;el.value=val||'';el.dataset.auto=val?'1':''};
   if($('#f-oncewrap')&&!$('#f-oncewrap').hidden)set('f-date',w.date);set('f-time',w.time);
-  const h=$('#f-whenhint');if(h){h.hidden=!(w.date||w.time);h.textContent='Repéré dans le nom : '+(w.date?fmtDay(w.date):'')+(w.date&&w.time?' à ':'')+(w.time||'')+'. Tu peux corriger plus bas.'}
 }
 const v_=id=>{const el=$('#'+id);return el?el.value.trim():''};
 function readTaskForm(){
