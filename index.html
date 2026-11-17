@@ -190,6 +190,17 @@ input,select,textarea{font-size:16px!important}
 .ex .b{padding:8px 10px;display:flex;flex-direction:column;gap:3px}
 .ex .n{font-weight:600;font-size:.92rem;display:flex;gap:6px;align-items:flex-start}
 .ex .num{flex:none;min-width:20px;height:20px;border-radius:10px;background:var(--line);font-size:.75rem;display:inline-flex;align-items:center;justify-content:center}
+.ex{cursor:pointer;transition:transform .15s}
+.ex:active{transform:scale(.97)}
+.exzoom{position:fixed;inset:0;z-index:200;background:rgba(30,25,35,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.exzoom[hidden]{display:none}
+.exz-card{position:relative;background:var(--white);border-radius:var(--r-card);box-shadow:var(--shadow);width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto}
+.exz-card img{display:block;width:100%;max-height:52vh;object-fit:cover;background:var(--line)}
+.exz-b{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px}
+.exz-b h2{display:flex;gap:8px;align-items:center;margin:0}
+.exz-b .num{flex:none;min-width:28px;height:28px;border-radius:14px;background:var(--line);font-size:.9rem;display:inline-flex;align-items:center;justify-content:center}
+.exz-dose{font-weight:600;font-size:1.05rem}
+.exz-close{position:absolute;top:8px;right:8px;background:var(--white);z-index:1}
 .ex .q{font-size:.85rem}
 .ex .tip{font-size:.8rem;color:var(--muted)}
 .cover{display:block;width:100%;height:200px;object-fit:cover;border-radius:var(--r-btn);background:var(--line)}
@@ -1222,12 +1233,29 @@ function workoutHtml(t){
   const meta=[w.distance?'📏 '+esc(w.distance)+' m':'',w.duration?'⏱️ '+fmtDur(w.duration):'',w.goal?'🎯 '+esc(w.goal):''].filter(Boolean).join(' · ');
   const credits=[];let n=0;
   const card=x=>{n++;if(x.credit&&!credits.includes(x.credit))credits.push(x.credit);
-    return '<div class="ex">'+(x.img?'<img loading="lazy" src="'+esc(x.img)+'" alt="'+esc(x.name)+'" onerror="this.remove()">':'')+
+    return '<div class="ex" role="button" tabindex="0" data-act="exzoom" data-id="'+esc(t.id)+'" data-n="'+n+'" aria-label="Voir en grand : '+esc(x.name)+'">'+(x.img?'<img loading="lazy" src="'+esc(x.img)+'" alt="'+esc(x.name)+'" onerror="this.remove()">':'')+
       '<div class="b"><div class="n"><span class="num">'+n+'</span>'+esc(x.name)+'</div>'+(x.dose?'<div class="q">'+esc(x.dose)+'</div>':'')+(x.tip?'<div class="tip">'+esc(x.tip)+'</div>':'')+'</div></div>'};
   const parts=(w.parts||[]).map(p=>'<div class="stack" style="gap:6px"><b class="small">'+esc(p.name)+'</b><div class="ex-grid">'+(p.items||[]).map(card).join('')+'</div></div>').join('');
   return '<div class="glass pad stack" style="box-shadow:none"><h3>'+(w.kind==='home'?'🏠 Séance à la maison':'🏊 Séance prévue')+'</h3>'+(meta?'<div class="small">'+meta+'</div>':'')+parts+
     (w.notes?'<div class="stack" style="gap:4px"><b class="small">Consignes</b><div class="ai-out">'+esc(w.notes)+'</div></div>':'')+
     (credits.length?'<p class="small muted">Photos : Wikimedia Commons, licences libres ('+esc(credits.join(', '))+').</p>':'')+'</div>';
+}
+// Carte d'exercice en grand : photo, dose, conseil et explication détaillée (x.how).
+function exZoom(id,n){
+  const t=taskById(id),w=t&&t.workout;if(!w)return;
+  const all=[];(w.parts||[]).forEach(p=>(p.items||[]).forEach(x=>all.push(Object.assign({part:p.name},x))));
+  const i=Math.max(0,Math.min(all.length-1,(+n||1)-1)),x=all[i];if(!x)return;
+  let o=$('#exzoom');if(!o){o=document.createElement('div');o.id='exzoom';o.className='exzoom';o.addEventListener('click',ev=>{if(ev.target===o)o.hidden=true});document.body.appendChild(o)}
+  o.innerHTML='<div class="exz-card" role="dialog" aria-modal="true" aria-label="'+esc(x.name)+'">'+
+    '<button class="icon-btn exz-close" data-act="exclose" aria-label="Fermer">✕</button>'+
+    (x.img?'<img src="'+esc(x.img)+'" alt="'+esc(x.name)+'" onerror="this.remove()">':'')+
+    '<div class="exz-b"><div class="small muted">'+esc(x.part)+'</div><h2><span class="num">'+(i+1)+'</span> '+esc(x.name)+'</h2>'+
+    (x.dose?'<div class="exz-dose">'+esc(x.dose)+'</div>':'')+(x.tip?'<p>'+esc(x.tip)+'</p>':'')+
+    (x.how?'<div class="ai-out">'+esc(x.how)+'</div>':'')+(x.credit?'<p class="small muted">Photo : '+esc(x.credit)+', Wikimedia Commons</p>':'')+
+    '<div class="row spread"><button class="btn soft" data-act="exzoom" data-id="'+esc(id)+'" data-n="'+i+'"'+(i?'':' disabled')+'>‹ Précédent</button>'+
+    '<span class="small muted">'+(i+1)+' / '+all.length+'</span>'+
+    '<button class="btn soft" data-act="exzoom" data-id="'+esc(id)+'" data-n="'+(i+2)+'"'+(i<all.length-1?'':' disabled')+'>Suivant ›</button></div></div></div>';
+  o.hidden=false;
 }
 // Empêchement : remplacer par la séance maison, ou pas de séance du tout.
 function skipHtml(t){
@@ -1575,6 +1603,8 @@ document.addEventListener('click',async e=>{
   else if(act==='assist')assist(id,a);
   else if(act==='split')split(id,a);
   else if(act==='addsteps')addSteps(a);
+  else if(act==='exzoom'){e.stopPropagation();exZoom(id,a.dataset.n)}
+  else if(act==='exclose'){const o=$('#exzoom');if(o)o.hidden=true}
   else if(act==='wskip')workoutSkip(id,a.dataset.mode,a);
   else if(act==='wunskip')workoutUnskip(id,a);
   else if(act==='swimadd')openSheet(swimImportSheet());
@@ -1583,6 +1613,7 @@ document.addEventListener('click',async e=>{
   else if(act==='swimcopy'){const t=taskById(id);if(t)copyOrShow(swimReport(t),'✅ Copié ! Ouvre ta conversation ChatGPT habituelle et colle le texte pour qu’il adapte tes prochaines séances.','#sw-msg')}
 });
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&$('#exzoom')&&!$('#exzoom').hidden){$('#exzoom').hidden=true;return}
   if(e.key==='Escape'){if(!$('#sheet').hidden)closeSheet();else if(S.menu){S.menu=null;render()}}
   if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('cell')){e.preventDefault();openSheet(daySheet(e.target.dataset.date))}
 });
