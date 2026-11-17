@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Life</title>
 <meta name="theme-color" content="#FFFEFB">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,6 +37,12 @@
 [hidden]{display:none!important}
 img{max-width:100%}
 html,body{min-height:100%}
+/* Écran fixe façon appli : pas de zoom (pincer ou double-toucher), pas de rebond ni de glissement de côté, barre de défilement cachée (on fait toujours défiler au doigt). */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden;overscroll-behavior:none;scrollbar-width:none;touch-action:pan-y}
+body{overflow-x:hidden;overscroll-behavior:none;touch-action:pan-y}
+html::-webkit-scrollbar,body::-webkit-scrollbar,#sheet .panel::-webkit-scrollbar{display:none;width:0;height:0}
+#sheet .panel{scrollbar-width:none;overscroll-behavior:contain}
+button,a,label,input,select,textarea{touch-action:manipulation}
 body{margin:0}
 body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
 .bg{position:fixed;inset:0;overflow:hidden;z-index:0;pointer-events:none}
@@ -154,6 +160,8 @@ input[type=text],input[type=time],input[type=date],input[type=number],select,tex
 input[type=file]{font-size:.85rem;color:var(--ink)}
 textarea{min-height:64px;resize:vertical}
 input[type=range]{width:100%;accent-color:var(--ink)}
+/* 16px minimum : en dessous, l’iPhone zoome tout seul quand on touche un champ. */
+input,select,textarea{font-size:16px!important}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:480px){.grid2{grid-template-columns:1fr}}
 .days,.seg,.multi,.presets{display:flex;gap:6px;flex-wrap:wrap}
@@ -224,6 +232,11 @@ details summary{cursor:pointer}
 <body>
 
 <div class="bg" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<script>
+/* Bloque le pincement pour zoomer (Safari ignore user-scalable=no). */
+["gesturestart","gesturechange","gestureend"].forEach(function(e){document.addEventListener(e,function(ev){ev.preventDefault()},{passive:false})});
+document.addEventListener("touchmove",function(ev){if(ev.touches.length>1)ev.preventDefault()},{passive:false});
+</script>
 <main id="app" aria-live="polite"><div class="splash" role="status"><div class="sp-orb"><i></i><b>Life</b></div><p class="sp-msg">Ta journée se prépare<span class="sp-dots"><b>.</b><b>.</b><b>.</b></span></p></div></main>
 <nav id="nav" class="glass" aria-label="Navigation" hidden>
   <button data-view="tasks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17h6M17 14v6"/></svg>Tâches</button>
