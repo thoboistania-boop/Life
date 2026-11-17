@@ -1137,7 +1137,7 @@ function taskDetail(t){
   '<div class="stack small" style="gap:6px"><div>📅 '+esc(recLabel(t))+(t.time?' à '+esc(t.time):'')+momentBadge(t)+'</div><div>⏱️ '+fmtDur(t.duration)+' · effort '+esc(EFFORT[t.effort].toLowerCase())+' · priorité '+esc(t.priority||5)+'/10</div>'+
   '<div>'+(t.mandatory?'📌 Obligatoire':'🌤️ Facultative')+(t.atWork?' · faisable au travail':'')+'</div>'+
   descHtml(t.desc)+'</div>'+
-  (t.workout?workoutHtml(t)+skipHtml(t)+swimFbHtml(t):isSwim(t)?swimSessionHtml(t)+skipHtml(t)+swimFbHtml(t):'')+
+  (t.workout?workoutHtml(t)+(t.workout.kind==='meal'?'':skipHtml(t)+swimFbHtml(t)):isSwim(t)?swimSessionHtml(t)+skipHtml(t)+swimFbHtml(t):'')+
   (subs.length?'<div class="stack" style="gap:6px"><h3>Sous-tâches</h3>'+subs.map(x=>'<div class="glass tcard'+(isDone(x,d)?' done':'')+'" data-act="open" data-id="'+esc(x.id)+'"><button class="check'+(isDone(x,d)?' on':'')+'" style="--c:'+esc(c.color)+'" data-act="toggle" data-id="'+esc(x.id)+'" data-refresh="'+esc(t.id)+'" aria-label="Cocher">'+(isDone(x,d)?'✓':'')+'</button><div class="body"><div class="t">'+esc(x.title)+'</div><div class="meta">'+esc(recLabel(x))+' · '+fmtDur(x.duration)+'</div></div></div>').join('')+'</div>':'')+
   '<div class="row"><button class="btn" data-act="toggle" data-id="'+esc(t.id)+'" data-close="1">'+(isDone(t,d)?'Marquer comme pas faite':'C’est fait')+'</button>'+(!isDone(t,d)&&!t.abandoned?'<button class="btn soft" data-act="lskip" data-id="'+esc(t.id)+'" data-close="1">⏭️ '+(t.type==='once'?'Plus tard':'Pas aujourd’hui')+'</button>'+(t.type==='once'?'<button class="btn soft" data-act="dtomorrow" data-id="'+esc(t.id)+'" data-close="1">📅 Demain</button>':''):'')+'<button class="btn soft" data-act="edit" data-id="'+esc(t.id)+'">Modifier</button><button class="btn danger" data-act="del" data-id="'+esc(t.id)+'">Supprimer</button></div>'+webBlock(t)+ai;
 }
@@ -1240,8 +1240,8 @@ function workoutHtml(t){
     return '<div class="ex" role="button" tabindex="0" data-act="exzoom" data-id="'+esc(t.id)+'" data-n="'+n+'" aria-label="Voir en grand : '+esc(x.name)+'">'+(x.img?'<img loading="lazy" src="'+esc(x.img)+'" alt="'+esc(x.name)+'" onerror="this.remove()">':'')+
       '<div class="b"><div class="n"><span class="num">'+n+'</span>'+esc(x.name)+'</div>'+(x.dose?'<div class="q">'+esc(x.dose)+'</div>':'')+(x.tip?'<div class="tip">'+esc(x.tip)+'</div>':'')+'</div></div>'};
   const parts=(w.parts||[]).map(p=>'<div class="stack" style="gap:6px"><b class="small">'+esc(p.name)+'</b><div class="ex-grid">'+(p.items||[]).map(card).join('')+'</div></div>').join('');
-  return '<div class="glass pad stack" style="box-shadow:none"><h3>'+(w.kind==='home'?'🏠 Séance à la maison':'🏊 Séance prévue')+'</h3>'+(meta?'<div class="small">'+meta+'</div>':'')+parts+
-    (w.notes?'<div class="stack" style="gap:4px"><b class="small">Consignes</b><div class="ai-out">'+esc(w.notes)+'</div></div>':'')+
+  return '<div class="glass pad stack" style="box-shadow:none"><h3>'+(w.kind==='meal'?'🍽️ Recette':w.kind==='home'?'🏠 Séance à la maison':'🏊 Séance prévue')+'</h3>'+(meta?'<div class="small">'+meta+'</div>':'')+parts+
+    (w.notes?'<div class="stack" style="gap:4px"><b class="small">'+(w.kind==='meal'?'Bon à savoir':'Consignes')+'</b><div class="ai-out">'+esc(w.notes)+'</div></div>':'')+
     (credits.length?'<p class="small muted">Photos : Wikimedia Commons, licences libres ('+esc(credits.join(', '))+').</p>':'')+'</div>';
 }
 // Carte d'exercice en grand : photo, dose, conseil et explication détaillée (x.how).
