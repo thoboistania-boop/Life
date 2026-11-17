@@ -926,7 +926,11 @@ function viewCat(c){
   const ts=S.tasks.filter(t=>c.id?inCatTree(t,c.id):!S.cats.find(x=>x.id===t.catId));
   const kids=c.id?subCats(c.id):[],par=c.parentId?S.cats.find(x=>x.id===c.parentId):null;
   const open=ts.filter(t=>!(t.type==='once'&&(t.done||t.abandoned))),closed=ts.filter(t=>t.type==='once'&&(t.done||t.abandoned));
-  const roots=open.filter(t=>!t.parentId||!open.find(x=>x.id===t.parentId)).sort((a,b)=>((+b.priority||5)-(+a.priority||5))||String(a.date||'9999').localeCompare(String(b.date||'9999'))||String(a.time||'99').localeCompare(String(b.time||'99')));
+  // Dans une catégorie : la date la plus récente en haut, la plus ancienne en bas (même jour : heure la plus tardive en haut). Sans date (récurrentes, à placer) tout en bas, par priorité.
+  const when=t=>t.date?t.date+' '+(t.time||'00:00'):'';
+  const byRecent=(a,b)=>{const x=when(a),y=when(b);if(x&&!y)return -1;if(!x&&y)return 1;return y.localeCompare(x)||((+b.priority||5)-(+a.priority||5))};
+  const roots=open.filter(t=>!t.parentId||!open.find(x=>x.id===t.parentId)).sort(byRecent);
+  closed.sort((a,b)=>String(b.date||b.doneDay||b.doneAt||'').localeCompare(String(a.date||a.doneDay||a.doneAt||'')));
   const tree=roots.map(t=>listItem(t)+open.filter(x=>x.parentId===t.id).map(x=>listItem(x,true)).join('')).join('');
   return '<div class="row"><button class="link" data-act="backcats">‹ Toutes les catégories</button>'+(par?'<button class="link" data-act="opencat" data-id="'+esc(par.id)+'">‹ '+esc(par.emoji+' '+par.name)+'</button>':'')+'</div>'+
   '<section class="spread"><div class="row"><span class="etile" style="--c:'+esc(c.color)+';width:46px;height:46px;font-size:1.4rem">'+esc(c.emoji)+'</span><div><h1>'+esc(c.name)+'</h1>'+(c.desc?'<p class="muted small">'+esc(c.desc)+'</p>':'')+'</div></div><div><div class="big">'+esc(c.priority)+'</div><div class="small muted">priorité</div></div></section>'+
