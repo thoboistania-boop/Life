@@ -629,6 +629,7 @@ async function startStore(uid){
     if(first)await computeLoad();
     fixClashes();
     maybeAutoPlan();render();
+    if(first)openFromLink();
   },dbErr);
   subscribePlan();
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&planDate&&planDate!==today())subscribePlan()});
@@ -1864,6 +1865,18 @@ document.addEventListener('submit',async e=>{
   }
 });
 
+// Notification touchée : Life s'ouvre directement sur la tâche (et sur le ressenti si demandé).
+function openTaskFromPush(id,fb){
+  const t=taskById(id);if(!t)return;
+  openSheet(taskDetail(t));
+  if(fb)setTimeout(()=>{const f=$('#sw-form');if(f)f.scrollIntoView({behavior:'smooth',block:'start'})},300);
+}
+function openFromLink(){
+  const q=new URLSearchParams(location.search),id=q.get('t');if(!id)return;
+  history.replaceState(null,'',location.pathname);
+  openTaskFromPush(id,q.get('fb')==='1');
+}
+if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.open&&S.tasksLoaded)openTaskFromPush(e.data.open,e.data.fb)});
 boot();
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 })();

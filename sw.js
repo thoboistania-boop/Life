@@ -1,21 +1,27 @@
 // Garde une copie des fichiers de l'appli pour l'ouvrir même avec une connexion faible.
 // Réseau d'abord, pour toujours avoir la dernière version quand internet est là.
-const CACHE = 'life-v18';
+const CACHE = 'life-v19';
 
 // Notifications envoyées par la fonction Supabase life-push.
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data && e.data.text() }; }
   e.waitUntil(self.registration.showNotification(d.title || 'Life', {
-    body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: d.tag || undefined, data: { url: './' }
+    body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: d.tag || undefined, data: { url: d.url || './' }
   }));
 });
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  // Ouvre Life sur la tâche concernée (lien ./?t=<id>, et &fb=1 pour aller au ressenti).
+  const url = (e.notification.data && e.notification.data.url) || './';
+  const q = new URL(url, self.registration.scope).searchParams;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const c of list) if ('focus' in c) return c.focus();
-    return self.clients.openWindow('./');
+    for (const c of list) if ('focus' in c) {
+      if (q.get('t')) c.postMessage({ open: q.get('t'), fb: q.get('fb') === '1' });
+      return c.focus();
+    }
+    return self.clients.openWindow(url);
   }));
 });
 const SHELL = ['./', './index.html', './planner.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
