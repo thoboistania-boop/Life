@@ -1099,9 +1099,11 @@ function viewSettings(){
   '<div class="glass pad stack"><h2>Charge de la journée</h2><p class="small muted">Life ajuste toute seule selon ce que tu termines. Tu peux aussi l’orienter avec « Alléger » et « Ajoute-moi des tâches » sur la page Home.</p>'+
   '<p class="small">Réglage actuel : '+Math.round(loadFactor()*100)+' % de la charge normale.</p><div><button type="button" class="btn soft" data-act="resetload">Revenir à une charge normale</button></div></div>'+
   '<div class="glass pad stack"><h2>Affichage</h2><label class="toggle"><input type="checkbox" id="s-hidedone"'+(p.hideDone?' checked':'')+'> Masquer les tâches faites dans « Ma journée »</label></div>'+
-  '<div class="glass pad stack"><h2>Alertes</h2><p class="small muted">10 minutes avant chaque tâche à heure précise.</p>'+
+  '<div class="glass pad stack"><h2>Alertes</h2><p class="small muted">Ta journée au réveil, 10 minutes avant chaque tâche à heure précise, l’heure de commencer à cuisiner, ton ressenti après le sport, une relance si une tâche n’est pas cochée et le bilan du soir.</p>'+
   '<div class="stack" style="gap:6px"><b class="small">Notifications sur cet appareil</b><p class="small muted" id="push-state">'+pushStateText()+'</p>'+
   '<div class="row"><button type="button" class="btn" data-act="pushon">Activer sur cet appareil</button><button type="button" class="btn soft" data-act="pushtest">Envoyer une notification test</button></div></div>'+
+  '<div class="stack" style="gap:6px"><b class="small">🔊 Ta journée à voix haute (iPhone)</b><p class="small muted">Quand tu arrêtes ton alarme, ton iPhone lit ta journée : météo, séance, dîner, courses. Copie le lien, puis colle-le dans l’app Raccourcis (action « Obtenir le contenu de l’URL », suivie de « Énoncer le texte »).</p>'+
+  '<div class="row"><button type="button" class="btn" data-act="voicelink">Copier le lien</button><button type="button" class="btn soft" data-act="voicetest">Écouter un essai</button></div></div>'+
   '<p class="small muted">Quand Life est ouverte, une alerte s’affiche aussi dans la page (avec son après un premier clic).</p>'+
   '<label class="toggle"><input type="checkbox" id="s-alerts"'+(p.alerts!==false?' checked':'')+'> Afficher les alertes</label>'+
   '<label class="toggle"><input type="checkbox" id="s-sound"'+(p.sound!==false?' checked':'')+'> Avec son</label>'+
@@ -1746,6 +1748,8 @@ document.addEventListener('click',async e=>{
   }
   else if(act==='pushon')enablePush(a);
   else if(act==='pushtest')testPush();
+  else if(act==='voicelink')voiceLink(true);
+  else if(act==='voicetest')voiceTest(a);
   else if(act==='authswitch'){S.auth=S.auth==='signup'?'signin':'signup';$('#app').innerHTML='';render()}
   else if(act==='logout'){await sb.auth.signOut();location.reload()}
   else if(act==='websearch'){a.disabled=true;try{await requestWeb($('#web-q').value,id);toast('Question transmise à Claude.')}catch(err){toast('Pas envoyée. Réessaie.')}a.disabled=false}
@@ -1865,6 +1869,22 @@ document.addEventListener('submit',async e=>{
   }
 });
 
+// Lecture vocale : lien personnel (clé rangée dans le profil) pour le raccourci iPhone.
+async function voiceLink(copy){
+  let k=S.profile&&S.profile.voiceKey;
+  if(!k){const a=new Uint8Array(18);crypto.getRandomValues(a);k=Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');await base.update({voiceKey:k});S.profile.voiceKey=k}
+  const url='https://fycpioedjvrxkpkcyijw.supabase.co/functions/v1/life-voice?k='+k;
+  if(copy){try{await navigator.clipboard.writeText(url);toast('Lien copié : colle-le dans Raccourcis.')}catch(e){prompt('Copie ce lien :',url)}}
+  return url;
+}
+async function voiceTest(btn){
+  btn.disabled=true;
+  try{const txt=await (await fetch(await voiceLink(false))).text();
+    if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(txt);u.lang='fr-FR';speechSynthesis.cancel();speechSynthesis.speak(u)}
+    toast(txt.slice(0,140)+(txt.length>140?'…':''));
+  }catch(e){toast('Pas pu récupérer ta journée. Réessaie.')}
+  btn.disabled=false;
+}
 // Notification touchée : Life s'ouvre directement sur la tâche (et sur le ressenti si demandé).
 function openTaskFromPush(id,fb){
   const t=taskById(id);if(!t)return;
