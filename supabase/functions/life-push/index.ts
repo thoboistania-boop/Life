@@ -1,11 +1,13 @@
 // Fonction Supabase "life-push" : appelée chaque minute par pg_cron.
 // 1. Envoie les messages en attente (collection life/pushqueue : test, réponse de Life…).
 // 2. Envoie une notification 10 minutes avant chaque tâche à heure précise du jour.
+// 4. Mails : « Ta journée » au réveil, « Ta semaine » le dimanche (si life_secrets contient resend_key et mail_to).
 // 3. Repas : « commence à cuisiner » ; sport : demande du ressenti ; relance d'une tâche non cochée ; bilan du soir.
 // Les clés VAPID et le jeton d'appel sont lus dans la table privée public.life_secrets.
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import "./planner.js"; // même cerveau de planning que l'appli
+import { dailyMail, weeklyMail, sendMail } from "./mail.ts";
 const P = (globalThis as any).LifePlanner;
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -192,9 +194,12 @@ Deno.serve(async (req) => {
     // Après une séance de sport cochée (ou terminée) : demander le ressenti s'il n'est pas encore noté.
     for (const t of tasks) {
       const d = t.data;
-      if (!isSport(d) || !d.time || d.abandoned || d.skipped || !isOnce(d) || d.date !== now.date) continue;
+      if (!isSport(d) || d.abandoned || d.skipped || !isOnce(d) || d.date !== now.date) continue;
       if (d.swimFeedback && String(d.swimFeedback.at || "").slice(0, 10) >= now.date) continue;
-      const end = toMin(d.time) + (Number(d.duration) || 45);
+      const slot = (plan?.items || []).find((it: any) => it.tid === t.id && !it.w);
+      const startMin = d.time ? toMin(d.time) : slot ? Number(slot.s) : null;
+      if (startMin == null && !d.done) continue;
+      const end = (startMin ?? 0) + (Number(d.duration) || 45);
       const doneMin = d.done && d.doneAt ? toMin(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d.doneAt))) : null;
       const at = doneMin != null ? Math.min(doneMin + 10, end + 20) : end + 20;
       if (now.min >= at && now.min <= Math.min(at + 120, sleep) && once(`${t.id}@fb`)) {
@@ -218,6 +223,29 @@ Deno.serve(async (req) => {
       ].join("\n");
       await send({ title: `🌙 Bilan du jour · ${doneN} fait${doneN > 1 ? "s" : ""}`, body, tag: `${now.date}-evening`, url: "./" });
       fresh.push("evening");
+    }
+    // Mails du matin (et du dimanche) : envoyés au réveil, une seule fois par jour.
+    const mailAsk = new URL(req.url).searchParams.get("mail");
+    if (S.resend_key && S.mail_to && profile.mails !== false) {
+      const atWake = now.min >= wake && now.min <= wake + 30;
+      const raw = tasks.map((r) => ({ id: r.id, ...r.data }));
+      const cats2 = by("life/profile/categories", uid).map((r) => ({ id: r.id, ...r.data }));
+      const isSunday = parse(now.date).getUTCDay() === 0;
+      if (mailAsk === "day" || (atWake && once("mail-day"))) {
+        const p2 = all.find((r) => r.user_id === uid && r.coll === "life/profile/plans" && r.id === now.date)?.data;
+        const planLines: string[] = [];
+        for (const it of p2?.items || []) {
+          const t = raw.find((x: any) => x.id === it.tid) as any;
+          if (!t || t.workout || t.catId === "repas" || t.catId === "courses" || (isOnce(t) ? t.done || t.abandoned : (t.doneDates || []).includes(now.date))) continue;
+          planLines.push(`${it.w ? "💼" : P.toHM(it.s)} ${(cats2.find((c: any) => c.id === t.catId) as any)?.emoji || "•"} ${t.title}`);
+        }
+        const ok = await sendMail(S.resend_key, S.mail_to, dailyMail({ tasks: raw, cats: cats2, date: now.date, wx: await weatherLine(profile.city), planLines }));
+        if (ok && mailAsk !== "day") fresh.push("mail-day");
+      }
+      if (mailAsk === "week" || (isSunday && atWake && once("mail-week"))) {
+        const ok = await sendMail(S.resend_key, S.mail_to, weeklyMail({ tasks: raw, cats: cats2, date: now.date }));
+        if (ok && mailAsk !== "week") fresh.push("mail-week");
+      }
     }
     if (fresh.length) {
       await sb.from("docs").upsert({ user_id: uid, coll: "life/pushlog", id: now.date, data: { sent: done.concat(fresh) }, updated_at: new Date().toISOString() });
