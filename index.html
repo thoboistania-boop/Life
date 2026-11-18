@@ -1725,7 +1725,7 @@ document.addEventListener('click',async e=>{
   else if(act==='odone'||act==='otoday'||act==='oabandon'||act==='olater'){
     const t=taskById(id);if(!t)return;a.disabled=true;
     const patch=act==='odone'?{done:true,doneAt:new Date().toISOString(),doneDay:t.date}:act==='otoday'?{date:today()}:act==='olater'?{date:null,postponed:(t.postponed||0)+1,postponedAt:new Date().toISOString()}:{abandoned:true,abandonedAt:new Date().toISOString()};
-    try{await tasksRef.doc(id).update(patch);toast(act==='odone'?'Bien noté.':act==='otoday'?'Ajoutée à aujourd’hui.':act==='olater'?'Pas de souci : Life lui trouve un meilleur moment. Tu vas y arriver !':'Retirée de ta liste et de ta journée.');setTimeout(()=>replanToday(true),400)}
+    try{await tasksRef.doc(id).update(patch);if(act==='olater'&&S.plan&&S.plan.date===today())S.plan=Object.assign({},S.plan,{skipped:(S.plan.skipped||[]).concat(id)});toast(act==='odone'?'Bien noté.':act==='otoday'?'Ajoutée à aujourd’hui.':act==='olater'?'Pas de souci : Life lui trouve un meilleur moment. Tu vas y arriver !':'Retirée de ta liste et de ta journée.');setTimeout(()=>replanToday(true),400)}
     catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
   }
   else if(act==='lmove'||act==='lskip'){
@@ -1733,7 +1733,7 @@ document.addEventListener('click',async e=>{
     try{
       if(act==='lmove')await tasksRef.doc(id).update({time:null,timeWas:t.time});
       else if(t.type==='once')await tasksRef.doc(id).update({time:null,timeWas:t.time,date:null,postponed:(t.postponed||0)+1,postponedAt:new Date().toISOString()});
-      else if(S.plan)S.plan=Object.assign({},S.plan,{skipped:(S.plan.skipped||[]).concat(id)});
+      if(act==='lskip'&&S.plan)S.plan=Object.assign({},S.plan,{skipped:(S.plan.skipped||[]).concat(id)});
       if(a.dataset.close)closeSheet();S.menu=null;
       setTimeout(()=>replanToday(true),400);toast(act==='lmove'?'Life la replace plus tard dans ta journée.':t.type==='once'?'Pas de souci : Life lui trouve un meilleur moment. Tu vas y arriver !':'OK pour aujourd’hui. Demain, c’est reparti !');
     }catch(err){a.disabled=false;toast('Pas enregistré. Réessaie.')}
